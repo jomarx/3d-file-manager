@@ -95,7 +95,8 @@ export function useFileActions(o: Options) {
     ]
   }
 
-  const menuEntries = (files: FileItem[]): MenuEntry[] => {
+  // organize holds the tag and collection entries, shown above Rename.
+  const menuEntries = (files: FileItem[], organize: MenuEntry[] = []): MenuEntry[] => {
     const one = files.length === 1 && !files[0].missing ? files[0] : null
     const allMissing = files.every((f) => f.missing)
     return [
@@ -110,6 +111,7 @@ export function useFileActions(o: Options) {
       },
       { label: files.length === 1 ? 'Copy path' : 'Copy paths', onSelect: () => void copyPaths(files) },
       { separator: true },
+      ...(organize.length > 0 ? [...organize, { separator: true } as const] : []),
       { label: 'Rename…', hint: 'F2', disabled: !one, onSelect: o.startRename },
       {
         label: allMissing ? 'Remove from catalog' : 'Move to Recycle Bin',

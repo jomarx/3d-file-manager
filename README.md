@@ -35,6 +35,6 @@ src/renderer/    React UI
 2. Catalog and search — folder scanning, grid/list, filters, search prefixes ✅
 3. Viewer — STL, 3MF, G-code preview and metadata ✅
 4. File operations and slicers — rename, delete to Recycle Bin, Open with ✅
-5. Tags and collections
+5. Tags and collections — create, edit, assign from the panel, menus or drag and drop ✅
 6. Folder watcher, move detection, Missing view, thumbnails
 7. Polish and packaging

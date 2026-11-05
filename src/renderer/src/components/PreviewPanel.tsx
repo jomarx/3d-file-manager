@@ -17,6 +17,8 @@ interface Props {
   onOpenWith(x: number, y: number): void
   onReveal(file: FileItem): void
   onTrash(): void
+  // Tags and collections of the selection.
+  organize: ReactNode
 }
 
 // Right-hand panel: 3D preview, metadata and file actions for the selection.
@@ -110,6 +112,7 @@ export default function PreviewPanel(props: Props) {
           )}
           {file.missing && <p className="mt-1 text-xs text-red-500 dark:text-red-400">Missing from disk</p>}
           <Actions {...props} />
+          {props.organize}
           <Details>
             <Row label="Type">{file.ext === 'gcode.3mf' ? 'G-code (Bambu .gcode.3mf)' : TYPE_LABEL[file.type]}</Row>
             <Row label="Size">{formatBytes(file.size)}</Row>
@@ -128,6 +131,7 @@ export default function PreviewPanel(props: Props) {
             {formatBytes(selected.reduce((sum, f) => sum + f.size, 0))} in total
           </p>
           <Actions {...props} />
+          {props.organize}
         </div>
       )}
     </aside>

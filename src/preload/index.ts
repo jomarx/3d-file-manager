@@ -38,10 +38,18 @@ const api: ThreeFmApi = {
     setDefault: (ext, appId) => ipcRenderer.invoke(IPC.appsSetDefault, ext, appId)
   },
   tags: {
-    list: () => ipcRenderer.invoke(IPC.tagsList)
+    list: () => ipcRenderer.invoke(IPC.tagsList),
+    create: (name, color) => ipcRenderer.invoke(IPC.tagsCreate, name, color),
+    update: (id, changes) => ipcRenderer.invoke(IPC.tagsUpdate, id, changes),
+    remove: (id) => ipcRenderer.invoke(IPC.tagsRemove, id),
+    assign: (fileIds, tagId, on) => ipcRenderer.invoke(IPC.tagsAssign, fileIds, tagId, on)
   },
   collections: {
-    list: () => ipcRenderer.invoke(IPC.collectionsList)
+    list: () => ipcRenderer.invoke(IPC.collectionsList),
+    create: (name, description) => ipcRenderer.invoke(IPC.collectionsCreate, name, description),
+    update: (id, changes) => ipcRenderer.invoke(IPC.collectionsUpdate, id, changes),
+    remove: (id) => ipcRenderer.invoke(IPC.collectionsRemove, id),
+    assign: (fileIds, collectionId, on) => ipcRenderer.invoke(IPC.collectionsAssign, fileIds, collectionId, on)
   }
 }
 

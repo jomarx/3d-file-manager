@@ -28,6 +28,33 @@ export interface Tag {
   fileCount: number
 }
 
+// Colors offered for tags; new tags take the next one in turn.
+export const TAG_COLORS = [
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#14b8a6',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#a16207',
+  '#64748b'
+]
+
+export const MAX_TAG_NAME = 40
+export const MAX_COLLECTION_NAME = 80
+
+// Why `name` can't name a tag or collection, or null if it can. Double quotes
+// are left out so every name can be typed in a tag:"…" or in:"…" search.
+export function labelProblem(kind: 'tag' | 'collection', name: string): string | null {
+  const max = kind === 'tag' ? MAX_TAG_NAME : MAX_COLLECTION_NAME
+  if (name.trim() === '') return 'Enter a name.'
+  if (name.includes('"')) return 'A name can\'t contain double quotes (").'
+  if (name.length > max) return `Keep the name under ${max + 1} characters.`
+  return null
+}
+
 export interface Collection {
   id: number
   name: string
@@ -67,6 +94,8 @@ export interface FileItem {
   size: number
   mtime: number
   missing: boolean
+  tagIds: number[]
+  collectionIds: number[]
 }
 
 export type LibraryView = 'all' | 'recent' | 'untagged' | 'missing'
@@ -132,6 +161,10 @@ export interface TrashResult {
   failed: { name: string; message: string }[]
 }
 
+export type TagResult = { ok: true; tag: Tag } | { ok: false; message: string }
+
+export type CollectionResult = { ok: true; collection: Collection } | { ok: false; message: string }
+
 export type AddAppResult =
   | { ok: true; state: AppsState }
   | { ok: false; reason: 'cancelled' | 'duplicate'; message: string }
@@ -174,9 +207,19 @@ export interface ThreeFmApi {
   }
   tags: {
     list(): Promise<Tag[]>
+    create(name: string, color?: string): Promise<TagResult>
+    update(id: number, changes: { name?: string; color?: string }): Promise<TagResult>
+    remove(id: number): Promise<void>
+    // Adds the tag to the files (on) or takes it off them.
+    assign(fileIds: number[], tagId: number, on: boolean): Promise<void>
   }
   collections: {
     list(): Promise<Collection[]>
+    create(name: string, description?: string | null): Promise<CollectionResult>
+    update(id: number, changes: { name?: string; description?: string | null }): Promise<CollectionResult>
+    remove(id: number): Promise<void>
+    // Adds the files to the collection (on) or takes them out.
+    assign(fileIds: number[], collectionId: number, on: boolean): Promise<void>
   }
 }
 
@@ -207,5 +250,13 @@ export const IPC = {
   appsRemove: 'apps:remove',
   appsSetDefault: 'apps:set-default',
   tagsList: 'tags:list',
-  collectionsList: 'collections:list'
+  tagsCreate: 'tags:create',
+  tagsUpdate: 'tags:update',
+  tagsRemove: 'tags:remove',
+  tagsAssign: 'tags:assign',
+  collectionsList: 'collections:list',
+  collectionsCreate: 'collections:create',
+  collectionsUpdate: 'collections:update',
+  collectionsRemove: 'collections:remove',
+  collectionsAssign: 'collections:assign'
 } as const

@@ -21,9 +21,13 @@ interface FileRow {
   size: number
   mtime: number
   missing_since: string | null
+  tag_ids: string | null
+  collection_ids: string | null
 }
 
 const TYPE_BY_EXT = new Map(FILE_EXTENSIONS.map((e) => [e.ext, e.type]))
+
+const ids = (list: string | null): number[] => (list ? list.split(',').map(Number) : [])
 
 function toItem(r: FileRow): FileItem {
   return {
@@ -35,7 +39,9 @@ function toItem(r: FileRow): FileItem {
     type: TYPE_BY_EXT.get(r.ext) ?? 'stl',
     size: r.size,
     mtime: r.mtime,
-    missing: r.missing_since !== null
+    missing: r.missing_since !== null,
+    tagIds: ids(r.tag_ids),
+    collectionIds: ids(r.collection_ids)
   }
 }
 
@@ -63,7 +69,9 @@ export function filePath(id: number): string | null {
   return row?.path ?? null
 }
 
-const ROW_COLUMNS = 'f.id, f.folder_id, f.path, f.name, f.ext, f.size, f.mtime, f.missing_since'
+const ROW_COLUMNS = `f.id, f.folder_id, f.path, f.name, f.ext, f.size, f.mtime, f.missing_since,
+  (SELECT group_concat(tag_id) FROM file_tags WHERE file_id = f.id) AS tag_ids,
+  (SELECT group_concat(collection_id) FROM collection_files WHERE file_id = f.id) AS collection_ids`
 
 export function getFile(id: number): FileItem | undefined {
   const row = getDb().prepare(`SELECT ${ROW_COLUMNS} FROM files f WHERE f.id = ?`).get(id) as

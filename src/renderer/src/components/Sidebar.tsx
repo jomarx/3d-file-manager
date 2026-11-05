@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react'
+import { useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Collection, Folder, LibraryStats, ScanProgress, Tag } from '@shared/api'
 import type { LibraryView, Selection } from '../types'
 import { numberFormat } from '../format'
+import { droppedFileIds, isFileDrag } from '../drag'
 
 interface Props {
   stats: LibraryStats
@@ -15,6 +16,10 @@ interface Props {
   onRemoveFolder(folder: Folder): void
   onRevealFolder(folder: Folder): void
   onRescanFolder(folder: Folder): void
+  onNewCollection(): void
+  onNewTag(): void
+  onLabelMenu(kind: 'tag' | 'collection', label: Tag | Collection, e: MouseEvent): void
+  onDropFiles(kind: 'tag' | 'collection', id: number, fileIds: number[]): void
 }
 
 const LIBRARY: { id: LibraryView; label: string; count: (s: LibraryStats) => number | null }[] = [
@@ -50,20 +55,23 @@ export default function Sidebar(props: Props) {
         ))}
       </Section>
 
-      <Section title="Collections" action={{ label: '+ New', disabled: true }}>
+      <Section title="Collections" action={{ label: '+ New', onClick: props.onNewCollection }}>
         {collections.length === 0 && <Empty>No collections yet</Empty>}
         {collections.map((c) => (
           <Item
             key={c.id}
             label={c.name}
             count={c.fileCount}
+            title={c.description ?? undefined}
             active={isSelected(selection, 'collection', c.id)}
             onClick={() => onSelect({ kind: 'collection', id: c.id })}
+            onContextMenu={(e) => props.onLabelMenu('collection', c, e)}
+            onDropFiles={(ids) => props.onDropFiles('collection', c.id, ids)}
           />
         ))}
       </Section>
 
-      <Section title="Tags">
+      <Section title="Tags" action={{ label: '+ New', onClick: props.onNewTag }}>
         {tags.length === 0 && <Empty>No tags yet</Empty>}
         {tags.map((t) => (
           <Item
@@ -73,6 +81,8 @@ export default function Sidebar(props: Props) {
             dot={t.color}
             active={isSelected(selection, 'tag', t.id)}
             onClick={() => onSelect({ kind: 'tag', id: t.id })}
+            onContextMenu={(e) => props.onLabelMenu('tag', t, e)}
+            onDropFiles={(ids) => props.onDropFiles('tag', t.id, ids)}
           />
         ))}
       </Section>
@@ -151,18 +161,47 @@ function Item(props: {
   dot?: string
   muted?: boolean
   onClick(): void
+  onContextMenu?(e: MouseEvent): void
+  // Makes the item a drop target for files dragged from the file area.
+  onDropFiles?(fileIds: number[]): void
 }) {
+  const [over, setOver] = useState(false)
+  const { onDropFiles } = props
+  const drop = onDropFiles && {
+    onDragEnter: (e: DragEvent) => isFileDrag(e) && setOver(true),
+    onDragOver: (e: DragEvent) => {
+      if (!isFileDrag(e)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false)
+    },
+    onDrop: (e: DragEvent) => {
+      e.preventDefault()
+      setOver(false)
+      onDropFiles(droppedFileIds(e))
+    }
+  }
   return (
     <li>
       <button
         type="button"
         title={props.title}
         onClick={props.onClick}
+        onContextMenu={(e) => {
+          if (!props.onContextMenu) return
+          e.preventDefault()
+          props.onContextMenu(e)
+        }}
+        {...drop}
         className={[
           'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left',
-          props.active
-            ? 'bg-accent/15 font-medium text-accent'
-            : 'hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60',
+          over
+            ? 'bg-accent text-white'
+            : props.active
+              ? 'bg-accent/15 font-medium text-accent'
+              : 'hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60',
           props.muted ? 'opacity-50' : ''
         ].join(' ')}
       >

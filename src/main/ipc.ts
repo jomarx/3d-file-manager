@@ -11,15 +11,15 @@ import { addApp, appsState, removeApp, setDefaultApp, syncDetectedApps } from '.
 import { SCHEMA_VERSION } from './db/migrations'
 import { getFile, getFiles, queryFiles } from './db/files'
 import { openFiles, openFilesWithSystem, renameFile, trashFiles, trashWarnings } from './fileops'
+import { addFolder, getFolder, libraryStats, listFolders, removeFolder } from './db/repo'
+import { assignTag, createTag, deleteTag, listTags, updateTag } from './db/tags'
 import {
-  addFolder,
-  getFolder,
-  libraryStats,
+  assignCollection,
+  createCollection,
+  deleteCollection,
   listCollections,
-  listFolders,
-  listTags,
-  removeFolder
-} from './db/repo'
+  updateCollection
+} from './db/collections'
 import type { Scanner } from './scan/scanner'
 
 export function registerIpc(dbPath: string, scanner: Scanner): void {
@@ -103,6 +103,20 @@ export function registerIpc(dbPath: string, scanner: Scanner): void {
   ipcMain.handle(IPC.appsSetDefault, (_e, ext: string, appId: number | null) => setDefaultApp(ext, appId))
 
   ipcMain.handle(IPC.tagsList, () => listTags())
+  ipcMain.handle(IPC.tagsCreate, (_e, name: string, color?: string) => createTag(name, color))
+  ipcMain.handle(IPC.tagsUpdate, (_e, id: number, changes: { name?: string; color?: string }) => updateTag(id, changes))
+  ipcMain.handle(IPC.tagsRemove, (_e, id: number) => deleteTag(id))
+  ipcMain.handle(IPC.tagsAssign, (_e, fileIds: number[], tagId: number, on: boolean) => assignTag(fileIds, tagId, on))
 
   ipcMain.handle(IPC.collectionsList, () => listCollections())
+  ipcMain.handle(IPC.collectionsCreate, (_e, name: string, description?: string | null) =>
+    createCollection(name, description)
+  )
+  ipcMain.handle(IPC.collectionsUpdate, (_e, id: number, changes: { name?: string; description?: string | null }) =>
+    updateCollection(id, changes)
+  )
+  ipcMain.handle(IPC.collectionsRemove, (_e, id: number) => deleteCollection(id))
+  ipcMain.handle(IPC.collectionsAssign, (_e, fileIds: number[], collectionId: number, on: boolean) =>
+    assignCollection(fileIds, collectionId, on)
+  )
 }

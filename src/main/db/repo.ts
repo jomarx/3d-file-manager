@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
-import type { AddFolderResult, Collection, Folder, LibraryStats, Tag } from '@shared/api'
+import type { AddFolderResult, Folder, LibraryStats } from '@shared/api'
 import { getDb } from './index'
 
 interface FolderRow {
@@ -89,26 +89,6 @@ export function addFolder(rawPath: string, recursive = true): AddFolderResult {
 
 export function removeFolder(id: number): void {
   getDb().prepare('DELETE FROM folders WHERE id = ?').run(id)
-}
-
-export function listTags(): Tag[] {
-  return getDb()
-    .prepare(
-      `SELECT t.id, t.name, t.color, COUNT(ft.file_id) AS fileCount
-       FROM tags t LEFT JOIN file_tags ft ON ft.tag_id = t.id
-       GROUP BY t.id ORDER BY t.name COLLATE NOCASE`
-    )
-    .all() as Tag[]
-}
-
-export function listCollections(): Collection[] {
-  return getDb()
-    .prepare(
-      `SELECT c.id, c.name, c.description, COUNT(cf.file_id) AS fileCount
-       FROM collections c LEFT JOIN collection_files cf ON cf.collection_id = c.id
-       GROUP BY c.id ORDER BY c.sort_order, c.name COLLATE NOCASE`
-    )
-    .all() as Collection[]
 }
 
 export function libraryStats(): LibraryStats {

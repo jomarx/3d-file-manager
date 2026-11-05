@@ -7,6 +7,9 @@ export type MenuEntry =
       disabled?: boolean
       bold?: boolean
       danger?: boolean
+      // Set on toggles: shows a check mark column.
+      checked?: boolean
+      dot?: string
       onSelect(): void
     }
   | { separator: true }
@@ -86,7 +89,8 @@ export default function Menu({ at, onClose }: { at: MenuAt; onClose(): void }) {
           <button
             key={i}
             type="button"
-            role="menuitem"
+            role={entry.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+            aria-checked={entry.checked}
             disabled={entry.disabled}
             onMouseEnter={(e) => e.currentTarget.focus()}
             onClick={() => {
@@ -100,6 +104,12 @@ export default function Menu({ at, onClose }: { at: MenuAt; onClose(): void }) {
               entry.danger ? 'text-red-600 dark:text-red-400' : ''
             ].join(' ')}
           >
+            {entry.checked !== undefined && (
+              <span className="-mr-4 w-3 shrink-0" aria-hidden>
+                {entry.checked ? '✓' : ''}
+              </span>
+            )}
+            {entry.dot && <span className="-mr-4 size-2 shrink-0 rounded-full" style={{ backgroundColor: entry.dot }} />}
             <span className="flex-1">{entry.label}</span>
             {entry.hint && <span className="text-[11px] opacity-60">{entry.hint}</span>}
           </button>

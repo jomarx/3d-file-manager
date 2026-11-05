@@ -1,5 +1,5 @@
-import { useEffect, useRef, type MouseEvent } from 'react'
-import type { FileItem, SortKey } from '@shared/api'
+import { useEffect, useRef, type DragEvent, type MouseEvent } from 'react'
+import type { FileItem, SortKey, Tag } from '@shared/api'
 import type { ViewMode } from '../types'
 import { formatBytes, formatDate, TYPE_LABEL, TYPE_STYLE, dirname } from '../format'
 import Highlight from './Highlight'
@@ -19,6 +19,8 @@ interface Props {
   onItemClick(item: FileItem, event: MouseEvent): void
   onItemOpen(item: FileItem): void
   onItemContextMenu(item: FileItem, event: MouseEvent): void
+  onItemDragStart(item: FileItem, event: DragEvent): void
+  tags: Map<number, Tag>
   onClearSelection(): void
   onLoadMore(): void
   onAddFolder(): void
@@ -109,6 +111,8 @@ function Grid(props: Props) {
               type="button"
               title={item.path}
               aria-pressed={active}
+              draggable
+              onDragStart={(e) => props.onItemDragStart(item, e)}
               onClick={(e) => props.onItemClick(item, e)}
               onDoubleClick={() => props.onItemOpen(item)}
               onContextMenu={(e) => props.onItemContextMenu(item, e)}
@@ -124,8 +128,11 @@ function Grid(props: Props) {
                 <p className="line-clamp-2 text-xs leading-snug font-medium break-all">
                   <Highlight text={item.name} terms={props.terms} />
                 </p>
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  {formatBytes(item.size)} · {formatDate(item.mtime)}
+                <p className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500">
+                  <span className="min-w-0 flex-1 truncate">
+                    {formatBytes(item.size)} · {formatDate(item.mtime)}
+                  </span>
+                  <TagDots item={item} tags={props.tags} />
                 </p>
               </div>
             </button>
@@ -133,6 +140,28 @@ function Grid(props: Props) {
         )
       })}
     </ul>
+  )
+}
+
+const MAX_DOTS = 4
+
+function itemTags(item: FileItem, tags: Map<number, Tag>): Tag[] {
+  return item.tagIds
+    .map((id) => tags.get(id))
+    .filter((t): t is Tag => t !== undefined)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function TagDots({ item, tags }: { item: FileItem; tags: Map<number, Tag> }) {
+  const list = itemTags(item, tags)
+  if (list.length === 0) return null
+  return (
+    <span className="flex shrink-0 items-center gap-0.5" title={list.map((t) => t.name).join(', ')}>
+      {list.slice(0, MAX_DOTS).map((t) => (
+        <span key={t.id} className="size-2 rounded-full" style={{ backgroundColor: t.color }} />
+      ))}
+      {list.length > MAX_DOTS && <span className="text-[10px]">+{list.length - MAX_DOTS}</span>}
+    </span>
   )
 }
 
@@ -166,10 +195,11 @@ function TypeBadge({ item, className = '' }: { item: FileItem; className?: strin
 
 const COLUMNS: { key: SortKey | null; label: string; className: string }[] = [
   { key: 'name', label: 'Name', className: 'w-auto' },
-  { key: 'type', label: 'Type', className: 'w-28' },
-  { key: 'size', label: 'Size', className: 'w-24 text-right' },
-  { key: 'mtime', label: 'Modified', className: 'w-44' },
-  { key: null, label: 'Folder', className: 'w-1/3' }
+  { key: 'type', label: 'Type', className: 'w-24' },
+  { key: 'size', label: 'Size', className: 'w-20 text-right' },
+  { key: 'mtime', label: 'Modified', className: 'w-40' },
+  { key: null, label: 'Tags', className: 'w-32' },
+  { key: null, label: 'Folder', className: 'w-1/5' }
 ]
 
 function List(props: Props) {
@@ -204,6 +234,8 @@ function List(props: Props) {
             <tr
               key={item.id}
               aria-selected={active}
+              draggable
+              onDragStart={(e) => props.onItemDragStart(item, e)}
               onClick={(e) => props.onItemClick(item, e)}
               onDoubleClick={() => props.onItemOpen(item)}
               onContextMenu={(e) => props.onItemContextMenu(item, e)}
@@ -220,6 +252,14 @@ function List(props: Props) {
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums">{formatBytes(item.size)}</td>
               <td className="px-3 py-1.5 text-zinc-500">{formatDate(item.mtime, true)}</td>
+              <td className="truncate px-3 py-1.5" title={itemTags(item, props.tags).map((t) => t.name).join(', ')}>
+                {itemTags(item, props.tags).map((t) => (
+                  <span key={t.id} className="mr-2 inline-flex items-center gap-1">
+                    <span className="size-2 rounded-full" style={{ backgroundColor: t.color }} />
+                    {t.name}
+                  </span>
+                ))}
+              </td>
               <td className="truncate px-3 py-1.5 text-zinc-500" title={item.path}>
                 {dirname(item.path, item.name)}
               </td>
