@@ -67,10 +67,24 @@ export function addFolder(rawPath: string, recursive = true): AddFolderResult {
       }
     }
   }
-  const info = getDb()
-    .prepare('INSERT INTO folders (path, recursive) VALUES (?, ?)')
-    .run(path, recursive ? 1 : 0)
-  return { ok: true, folder: getFolder(Number(info.lastInsertRowid))! }
+  const db = getDb()
+  const id = db.transaction(() => {
+    const info = db
+      .prepare('INSERT INTO folders (path, recursive) VALUES (?, ?)')
+      .run(path, recursive ? 1 : 0)
+    const newId = Number(info.lastInsertRowid)
+    // Adding a parent of folders already in the catalog absorbs them. Their
+    // files move over by id, so tags and collection entries survive.
+    if (recursive) {
+      for (const child of listFolders()) {
+        if (child.id === newId || !isInside(child.path, path)) continue
+        db.prepare('UPDATE files SET folder_id = ? WHERE folder_id = ?').run(newId, child.id)
+        db.prepare('DELETE FROM folders WHERE id = ?').run(child.id)
+      }
+    }
+    return newId
+  })()
+  return { ok: true, folder: getFolder(id)! }
 }
 
 export function removeFolder(id: number): void {

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { IPC, type AppInfo } from '@shared/api'
+import { IPC, type AddFolderResult, type AppInfo, type FileQuery } from '@shared/api'
 import { SCHEMA_VERSION } from './db/migrations'
+import { queryFiles } from './db/files'
 import {
   addFolder,
   getFolder,
@@ -10,8 +11,9 @@ import {
   listTags,
   removeFolder
 } from './db/repo'
+import type { Scanner } from './scan/scanner'
 
-export function registerIpc(dbPath: string): void {
+export function registerIpc(dbPath: string, scanner: Scanner): void {
   ipcMain.handle(IPC.appInfo, (): AppInfo => ({
     name: app.getName(),
     version: app.getVersion(),
@@ -24,14 +26,16 @@ export function registerIpc(dbPath: string): void {
 
   ipcMain.handle(IPC.foldersList, () => listFolders())
 
-  ipcMain.handle(IPC.foldersPickAndAdd, async (event) => {
+  ipcMain.handle(IPC.foldersPickAndAdd, async (event): Promise<AddFolderResult> => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const options = { title: 'Add folder to catalog', properties: ['openDirectory' as const] }
     const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
     if (picked.canceled || picked.filePaths.length === 0) {
       return { ok: false, reason: 'cancelled', message: 'No folder selected.' }
     }
-    return addFolder(picked.filePaths[0])
+    const result = addFolder(picked.filePaths[0])
+    if (result.ok) scanner.enqueue(result.folder.id)
+    return result
   })
 
   ipcMain.handle(IPC.foldersRemove, (_e, id: number) => removeFolder(id))
@@ -40,6 +44,10 @@ export function registerIpc(dbPath: string): void {
     const folder = getFolder(id)
     if (folder) await shell.openPath(folder.path)
   })
+
+  ipcMain.handle(IPC.foldersRescan, (_e, id: number) => scanner.enqueue(id))
+
+  ipcMain.handle(IPC.filesQuery, (_e, query: FileQuery) => queryFiles(query))
 
   ipcMain.handle(IPC.tagsList, () => listTags())
 

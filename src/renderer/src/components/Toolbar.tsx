@@ -1,13 +1,23 @@
-import type { FileType, ViewMode } from '../types'
+import type { FileType, SortKey, ViewMode } from '../types'
 
 interface Props {
   query: string
   onQueryChange(query: string): void
   types: Set<FileType>
   onTypesChange(types: Set<FileType>): void
+  sort: SortKey
+  desc: boolean
+  onSortChange(sort: SortKey, desc: boolean): void
   viewMode: ViewMode
   onViewModeChange(mode: ViewMode): void
 }
+
+const SORTS: { id: SortKey; label: string }[] = [
+  { id: 'name', label: 'Name' },
+  { id: 'mtime', label: 'Date modified' },
+  { id: 'size', label: 'Size' },
+  { id: 'type', label: 'Type' }
+]
 
 const TYPES: { id: FileType; label: string }[] = [
   { id: 'stl', label: 'STL' },
@@ -62,7 +72,38 @@ export default function Toolbar(props: Props) {
         })}
       </div>
 
-      <div className="ml-auto flex overflow-hidden rounded-md border border-zinc-300 dark:border-zinc-700">
+      <div className="ml-auto flex items-center gap-1">
+        <label htmlFor="sort" className="text-xs text-zinc-500">
+          Sort
+        </label>
+        <select
+          id="sort"
+          value={props.sort}
+          onChange={(e) => {
+            const sort = e.target.value as SortKey
+            // Newest and largest first are the useful defaults.
+            props.onSortChange(sort, sort === 'mtime' || sort === 'size')
+          }}
+          className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-accent dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          {SORTS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          title={props.desc ? 'Descending' : 'Ascending'}
+          aria-label={props.desc ? 'Sort descending' : 'Sort ascending'}
+          onClick={() => props.onSortChange(props.sort, !props.desc)}
+          className="grid size-8 place-items-center rounded-md border border-zinc-300 text-xs text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
+        >
+          {props.desc ? '↓' : '↑'}
+        </button>
+      </div>
+
+      <div className="flex overflow-hidden rounded-md border border-zinc-300 dark:border-zinc-700">
         {(['grid', 'list'] as const).map((mode) => (
           <button
             key={mode}

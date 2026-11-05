@@ -41,6 +41,72 @@ export interface LibraryStats {
   missing: number
 }
 
+export type FileType = 'stl' | '3mf' | 'gcode'
+
+// Extensions 3FM catalogs, longest first so ".gcode.3mf" wins over ".3mf".
+// A Bambu/Orca ".gcode.3mf" is a sliced plate, so it counts as G-code.
+export const FILE_EXTENSIONS: { ext: string; type: FileType }[] = [
+  { ext: 'gcode.3mf', type: 'gcode' },
+  { ext: 'gcode', type: 'gcode' },
+  { ext: '3mf', type: '3mf' },
+  { ext: 'stl', type: 'stl' }
+]
+
+export function extensionOf(fileName: string): { ext: string; type: FileType } | null {
+  const lower = fileName.toLowerCase()
+  return FILE_EXTENSIONS.find((e) => lower.endsWith('.' + e.ext)) ?? null
+}
+
+export interface FileItem {
+  id: number
+  folderId: number
+  path: string
+  name: string
+  ext: string
+  type: FileType
+  size: number
+  mtime: number
+  missing: boolean
+}
+
+export type LibraryView = 'all' | 'recent' | 'untagged' | 'missing'
+
+export type Scope =
+  | { kind: 'library'; id: LibraryView }
+  | { kind: 'collection'; id: number }
+  | { kind: 'tag'; id: number }
+  | { kind: 'folder'; id: number }
+
+export type SortKey = 'name' | 'mtime' | 'size' | 'type'
+
+export interface FileQuery {
+  scope: Scope
+  search: string
+  types: FileType[]
+  sort: SortKey
+  desc: boolean
+  offset: number
+  limit: number
+}
+
+export interface FileQueryResult {
+  total: number
+  items: FileItem[]
+  // Plain words from the search box, for highlighting matches in names.
+  terms: string[]
+}
+
+export interface ScanProgress {
+  folderId: number
+  path: string
+  phase: 'scanning' | 'done' | 'offline' | 'error'
+  seen: number
+  added: number
+  updated: number
+  missing: number
+  message?: string
+}
+
 export interface ThreeFmApi {
   app: {
     info(): Promise<AppInfo>
@@ -53,6 +119,12 @@ export interface ThreeFmApi {
     pickAndAdd(): Promise<AddFolderResult>
     remove(id: number): Promise<void>
     reveal(id: number): Promise<void>
+    rescan(id: number): Promise<void>
+    // Subscribe to scan progress; returns an unsubscribe function.
+    onScanProgress(listener: (progress: ScanProgress) => void): () => void
+  }
+  files: {
+    query(query: FileQuery): Promise<FileQueryResult>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -69,6 +141,9 @@ export const IPC = {
   foldersPickAndAdd: 'folders:pick-and-add',
   foldersRemove: 'folders:remove',
   foldersReveal: 'folders:reveal',
+  foldersRescan: 'folders:rescan',
+  scanProgress: 'scan:progress',
+  filesQuery: 'files:query',
   tagsList: 'tags:list',
   collectionsList: 'collections:list'
 } as const

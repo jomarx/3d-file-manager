@@ -1,17 +1,20 @@
 import type { ReactNode } from 'react'
-import type { Collection, Folder, LibraryStats, Tag } from '@shared/api'
+import type { Collection, Folder, LibraryStats, ScanProgress, Tag } from '@shared/api'
 import type { LibraryView, Selection } from '../types'
+import { numberFormat } from '../format'
 
 interface Props {
   stats: LibraryStats
   folders: Folder[]
   tags: Tag[]
   collections: Collection[]
+  scans: Map<number, ScanProgress>
   selection: Selection
   onSelect(selection: Selection): void
   onAddFolder(): void
   onRemoveFolder(folder: Folder): void
   onRevealFolder(folder: Folder): void
+  onRescanFolder(folder: Folder): void
 }
 
 const LIBRARY: { id: LibraryView; label: string; count: (s: LibraryStats) => number | null }[] = [
@@ -76,17 +79,28 @@ export default function Sidebar(props: Props) {
 
       <Section title="Folders" action={{ label: '+ Add', onClick: props.onAddFolder }}>
         {folders.length === 0 && <Empty>No folders added</Empty>}
-        {folders.map((f) => (
+        {folders.map((f) => {
+          const scan = props.scans.get(f.id)
+          return (
           <div key={f.id} className="group relative">
             <Item
               label={folderLabel(f.path)}
-              title={f.path}
+              title={f.offline ? `${f.path} (offline)` : f.path}
               count={f.fileCount}
               muted={f.offline}
               active={isSelected(selection, 'folder', f.id)}
               onClick={() => onSelect({ kind: 'folder', id: f.id })}
             />
-            <div className="absolute top-1/2 right-1 hidden -translate-y-1/2 gap-1 group-hover:flex">
+            {scan && (
+              <p className="px-2 pb-1 text-[11px] text-zinc-500" aria-live="polite">
+                <span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-accent" />
+                Scanning… {numberFormat.format(scan.seen)} found
+              </p>
+            )}
+            <div className="absolute top-1 right-1 hidden gap-1 group-hover:flex">
+              <IconButton title="Rescan folder" onClick={() => props.onRescanFolder(f)}>
+                ⟳
+              </IconButton>
               <IconButton title="Open in Explorer" onClick={() => props.onRevealFolder(f)}>
                 ↗
               </IconButton>
@@ -95,7 +109,8 @@ export default function Sidebar(props: Props) {
               </IconButton>
             </div>
           </div>
-        ))}
+          )
+        })}
       </Section>
     </nav>
   )
