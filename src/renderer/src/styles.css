@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --color-accent: #f97316;
+  --color-accent-soft: #fed7aa;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-50 text-zinc-900 antialiased select-none dark:bg-[#0f1115] dark:text-zinc-100;
+}
+
+input,
+textarea {
+  @apply select-text;
+}

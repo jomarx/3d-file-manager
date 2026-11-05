@@ -1,0 +1,36 @@
+{
+  "name": "3fm",
+  "productName": "3FM",
+  "version": "0.1.0",
+  "description": "3D Files Manager: catalog, preview and organize STL, 3MF and G-code files",
+  "main": "./out/main/index.js",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "postinstall": "electron-builder install-app-deps",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "22.15.3",
+    "@types/react": "19.1.2",
+    "@types/react-dom": "19.1.2",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "42.11.18",
+    "electron-builder": "26.18.0",
+    "electron-vite": "6.0.0",
+    "react": "19.1.10",
+    "react-dom": "19.1.10",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
+  }
+}

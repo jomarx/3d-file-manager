@@ -1,0 +1,17 @@
+appId: app.threefm.desktop
+productName: 3FM
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/better-sqlite3/**
+win:
+  target: nsis
+  artifactName: 3FM-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: 3FM
