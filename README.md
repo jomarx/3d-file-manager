@@ -14,6 +14,7 @@ Electron · React · TypeScript · Vite (electron-vite) · Tailwind CSS · SQLit
 npm install      # also rebuilds better-sqlite3 for Electron
 npm run dev      # app with hot reload
 npm run typecheck
+npm test         # vitest, run inside Electron
 npm run dist     # Windows installer in dist/
 ```
 
@@ -31,9 +32,9 @@ src/renderer/    React UI
 ## Roadmap
 
 1. Scaffold — Electron + React + TS, SQLite schema with migrations ✅
-2. Catalog and search — folder scanning, grid/list, filters, search prefixes
-3. Viewer — STL, 3MF, G-code preview and metadata
-4. File operations and slicers — rename, delete to Recycle Bin, Open with
+2. Catalog and search — folder scanning, grid/list, filters, search prefixes ✅
+3. Viewer — STL, 3MF, G-code preview and metadata ✅
+4. File operations and slicers — rename, delete to Recycle Bin, Open with ✅
 5. Tags and collections
 6. Folder watcher, move detection, Missing view, thumbnails
 7. Polish and packaging

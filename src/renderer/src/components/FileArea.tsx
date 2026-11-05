@@ -17,6 +17,8 @@ interface Props {
   onSort(sort: SortKey, desc: boolean): void
   selected: Set<number>
   onItemClick(item: FileItem, event: MouseEvent): void
+  onItemOpen(item: FileItem): void
+  onItemContextMenu(item: FileItem, event: MouseEvent): void
   onClearSelection(): void
   onLoadMore(): void
   onAddFolder(): void
@@ -84,6 +86,7 @@ export default function FileArea(props: Props) {
   return (
     <main
       ref={scrollRef}
+      data-files
       className="min-w-0 flex-1 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) props.onClearSelection()
@@ -107,6 +110,8 @@ function Grid(props: Props) {
               title={item.path}
               aria-pressed={active}
               onClick={(e) => props.onItemClick(item, e)}
+              onDoubleClick={() => props.onItemOpen(item)}
+              onContextMenu={(e) => props.onItemContextMenu(item, e)}
               className={[
                 'flex w-full flex-col overflow-hidden rounded-lg border text-left transition-colors',
                 active
@@ -200,8 +205,10 @@ function List(props: Props) {
               key={item.id}
               aria-selected={active}
               onClick={(e) => props.onItemClick(item, e)}
+              onDoubleClick={() => props.onItemOpen(item)}
+              onContextMenu={(e) => props.onItemContextMenu(item, e)}
               className={[
-                'cursor-default border-b border-zinc-100 dark:border-zinc-900',
+                'cursor-default border-b select-none border-zinc-100 dark:border-zinc-900',
                 active ? 'bg-accent/15' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900'
               ].join(' ')}
             >

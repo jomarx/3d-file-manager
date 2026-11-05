@@ -107,6 +107,35 @@ export interface ScanProgress {
   message?: string
 }
 
+// A slicer or other program files can be opened with.
+export interface ExternalApp {
+  id: number
+  name: string
+  exePath: string
+  autoDetected: boolean
+  // Extensions it handles; null means any cataloged type.
+  exts: string[] | null
+}
+
+export interface AppsState {
+  apps: ExternalApp[]
+  // Extension ("stl", "gcode.3mf", …) → app id. Unlisted extensions use the Windows default.
+  defaults: Record<string, number>
+}
+
+export type OpResult = { ok: true } | { ok: false; message: string }
+
+export type RenameResult = { ok: true; file: FileItem } | { ok: false; message: string }
+
+export interface TrashResult {
+  trashed: number[]
+  failed: { name: string; message: string }[]
+}
+
+export type AddAppResult =
+  | { ok: true; state: AppsState }
+  | { ok: false; reason: 'cancelled' | 'duplicate'; message: string }
+
 export interface ThreeFmApi {
   app: {
     info(): Promise<AppInfo>
@@ -125,6 +154,23 @@ export interface ThreeFmApi {
   }
   files: {
     query(query: FileQuery): Promise<FileQueryResult>
+    // Opens with the given app, or with each extension's default when appId is null.
+    open(ids: number[], appId: number | null): Promise<OpResult>
+    // Opens with the Windows default program, ignoring 3FM's per-type defaults.
+    openSystem(ids: number[]): Promise<OpResult>
+    reveal(id: number): Promise<void>
+    copyPaths(ids: number[]): Promise<void>
+    rename(id: number, name: string): Promise<RenameResult>
+    // Names of files on drives without a Recycle Bin (deleting them may be permanent).
+    trashWarnings(ids: number[]): Promise<string[]>
+    trash(ids: number[]): Promise<TrashResult>
+  }
+  apps: {
+    list(): Promise<AppsState>
+    detect(): Promise<AppsState>
+    pickAndAdd(): Promise<AddAppResult>
+    remove(id: number): Promise<AppsState>
+    setDefault(ext: string, appId: number | null): Promise<AppsState>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -148,6 +194,18 @@ export const IPC = {
   foldersRescan: 'folders:rescan',
   scanProgress: 'scan:progress',
   filesQuery: 'files:query',
+  filesOpen: 'files:open',
+  filesOpenSystem: 'files:open-system',
+  filesReveal: 'files:reveal',
+  filesCopyPaths: 'files:copy-paths',
+  filesRename: 'files:rename',
+  filesTrashWarnings: 'files:trash-warnings',
+  filesTrash: 'files:trash',
+  appsList: 'apps:list',
+  appsDetect: 'apps:detect',
+  appsPickAndAdd: 'apps:pick-and-add',
+  appsRemove: 'apps:remove',
+  appsSetDefault: 'apps:set-default',
   tagsList: 'tags:list',
   collectionsList: 'collections:list'
 } as const

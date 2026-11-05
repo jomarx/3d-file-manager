@@ -1,7 +1,9 @@
 import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 import { IPC } from '@shared/api'
+import { detectApps } from './apps/detect'
 import { closeDatabase, openDatabase } from './db'
+import { syncDetectedApps } from './db/apps'
 import { listFolders } from './db/repo'
 import { registerIpc } from './ipc'
 import { handleFileProtocol, registerFileScheme } from './protocol'
@@ -59,6 +61,8 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(() => {
     const dbPath = join(app.getPath('userData'), '3fm.db')
     openDatabase(dbPath)
+    // Pick up slicers installed, upgraded or removed since the last run.
+    syncDetectedApps(detectApps())
     const scanner = new Scanner((progress) => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.scanProgress, progress)
     })

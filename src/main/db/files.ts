@@ -63,6 +63,37 @@ export function filePath(id: number): string | null {
   return row?.path ?? null
 }
 
+const ROW_COLUMNS = 'f.id, f.folder_id, f.path, f.name, f.ext, f.size, f.mtime, f.missing_since'
+
+export function getFile(id: number): FileItem | undefined {
+  const row = getDb().prepare(`SELECT ${ROW_COLUMNS} FROM files f WHERE f.id = ?`).get(id) as
+    | FileRow
+    | undefined
+  return row && toItem(row)
+}
+
+// Cataloged files for the given ids, in the order given; unknown ids are skipped.
+export function getFiles(ids: number[]): FileItem[] {
+  return ids.map(getFile).filter((f): f is FileItem => f !== undefined)
+}
+
+// Records a rename done on disk. A stale missing-file row at the new path is
+// dropped first: the renamed file now lives there.
+export function renameFileRow(id: number, path: string, name: string): FileItem {
+  const db = getDb()
+  db.transaction(() => {
+    db.prepare('DELETE FROM files WHERE path = ? AND id != ? AND missing_since IS NOT NULL').run(path, id)
+    db.prepare('UPDATE files SET path = ?, name = ? WHERE id = ?').run(path, name, id)
+  })()
+  return getFile(id)!
+}
+
+export function deleteFileRows(ids: number[]): void {
+  const db = getDb()
+  const del = db.prepare('DELETE FROM files WHERE id = ?')
+  db.transaction(() => ids.forEach((id) => del.run(id)))()
+}
+
 export function queryFiles(q: FileQuery): FileQueryResult {
   const search = parseSearch(q.search)
   const where: string[] = []
@@ -138,8 +169,7 @@ export function queryFiles(q: FileQuery): FileQueryResult {
   const limit = Math.min(Math.max(q.limit, 1), MAX_LIMIT)
   const rows = db
     .prepare(
-      `SELECT f.id, f.folder_id, f.path, f.name, f.ext, f.size, f.mtime, f.missing_since
-       FROM files f WHERE ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`
+      `SELECT ${ROW_COLUMNS} FROM files f WHERE ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`
     )
     .all(...params, limit, Math.max(q.offset, 0)) as FileRow[]
 

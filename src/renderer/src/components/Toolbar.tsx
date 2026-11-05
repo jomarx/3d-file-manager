@@ -10,6 +10,7 @@ interface Props {
   onSortChange(sort: SortKey, desc: boolean): void
   viewMode: ViewMode
   onViewModeChange(mode: ViewMode): void
+  onManageApps(): void
 }
 
 const SORTS: { id: SortKey; label: string }[] = [
@@ -121,6 +122,15 @@ export default function Toolbar(props: Props) {
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        title="Programs files open with"
+        onClick={props.onManageApps}
+        className="h-8 rounded-md border border-zinc-300 px-3 text-xs text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
+      >
+        Apps
+      </button>
     </header>
   )
 }

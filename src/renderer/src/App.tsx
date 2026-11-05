@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import type { Collection, FileItem, Folder, LibraryStats, ScanProgress, Tag } from '@shared/api'
+import type { AppsState, Collection, FileItem, Folder, LibraryStats, ScanProgress, Tag } from '@shared/api'
 import Sidebar from './components/Sidebar'
 import Toolbar from './components/Toolbar'
 import FileArea from './components/FileArea'
 import PreviewPanel from './components/PreviewPanel'
+import Menu, { type MenuAt } from './components/Menu'
+import TrashDialog from './components/TrashDialog'
+import AppsDialog from './components/AppsDialog'
 import { useDebounced, useFiles } from './hooks/useFiles'
+import { useFileActions } from './hooks/useFileActions'
+import { EMPTY_APPS } from './apps'
 import { numberFormat } from './format'
 import type { FileType, Selection, SortKey, ViewMode } from './types'
 
@@ -24,7 +29,12 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [notice, setNotice] = useState<string | null>(null)
+  const [apps, setApps] = useState<AppsState>(EMPTY_APPS)
+  const [appsOpen, setAppsOpen] = useState(false)
+  const [menu, setMenu] = useState<MenuAt | null>(null)
+  const [renaming, setRenaming] = useState(false)
   const anchor = useRef<number | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   const search = useDebounced(query, 150)
   const typeList = useMemo(() => [...types].sort(), [types])
@@ -45,6 +55,7 @@ export default function App() {
 
   useEffect(() => {
     void refreshSidebar()
+    void window.api.apps.list().then(setApps)
   }, [refreshSidebar])
 
   // Keep counts and results current while folders are being scanned.
@@ -79,10 +90,43 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [notice])
 
+  useEffect(() => setRenaming(false), [selected])
+
   const selectedItems = useMemo(
     () => files.items.filter((f) => selected.has(f.id)),
     [files.items, selected]
   )
+
+  const actions = useFileActions({
+    apps,
+    notify: setNotice,
+    changed: () => {
+      files.refresh()
+      void refreshSidebar()
+    },
+    removed: (ids) =>
+      setSelected((prev) => {
+        const next = new Set(prev)
+        for (const id of ids) next.delete(id)
+        return next
+      }),
+    startRename: () => setRenaming(true),
+    manageApps: () => setAppsOpen(true)
+  })
+
+  // Right-clicking outside the selection selects just that file, like Explorer.
+  const onItemContextMenu = (item: FileItem, e: MouseEvent) => {
+    e.preventDefault()
+    let targets = selectedItems
+    if (!selected.has(item.id)) {
+      anchor.current = item.id
+      setSelected(new Set([item.id]))
+      targets = [item]
+    }
+    setMenu({ x: e.clientX, y: e.clientY, entries: actions.menuEntries(targets) })
+  }
+
+  const onItemOpen = (item: FileItem) => void actions.open(selected.has(item.id) ? selectedItems : [item])
 
   const onItemClick = (item: FileItem, e: MouseEvent) => {
     const additive = e.ctrlKey || e.metaKey
@@ -109,18 +153,36 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
-      if (e.key === 'Escape') setSelected(new Set())
-      if (e.key === 'a' && (e.ctrlKey || e.metaKey) && !typing) {
-        e.preventDefault()
-        setSelected(new Set(files.items.map((f) => f.id)))
-      }
+  // Reassigned every render so the listener below always sees current state.
+  const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined)
+  onKey.current = (e) => {
+    const target = e.target as HTMLElement
+    const typing =
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+    if (e.key === 'Escape') setSelected(new Set())
+    if (e.key === 'a' && (e.ctrlKey || e.metaKey) && !typing) {
+      e.preventDefault()
+      setSelected(new Set(files.items.map((f) => f.id)))
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [files.items])
+    if (typing || appsOpen || actions.pendingTrash || selectedItems.length === 0) return
+    const single = selectedItems.length === 1 && !selectedItems[0].missing
+    // Enter on a toolbar or panel button should press that button instead.
+    if (e.key === 'Enter' && (target === document.body || target.closest('[data-files]'))) {
+      e.preventDefault()
+      void actions.open(selectedItems)
+    } else if (e.key === 'F2' && single) {
+      e.preventDefault()
+      setRenaming(true)
+    } else if (e.key === 'Delete') {
+      e.preventDefault()
+      void actions.requestTrash(selectedItems)
+    }
+  }
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => onKey.current(e)
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
+  }, [])
 
   const addFolder = async () => {
     const result = await window.api.folders.pickAndAdd()
@@ -166,6 +228,7 @@ export default function App() {
         onSortChange={onSortChange}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        onManageApps={() => setAppsOpen(true)}
       />
       <div className="flex min-h-0 flex-1">
         <Sidebar
@@ -194,11 +257,23 @@ export default function App() {
           onSort={onSortChange}
           selected={selected}
           onItemClick={onItemClick}
+          onItemOpen={onItemOpen}
+          onItemContextMenu={onItemContextMenu}
           onClearSelection={() => setSelected(new Set())}
           onLoadMore={files.loadMore}
           onAddFolder={addFolder}
         />
-        <PreviewPanel selected={selectedItems} />
+        <PreviewPanel
+          selected={selectedItems}
+          openLabel={actions.openLabel(selectedItems)}
+          renaming={renaming}
+          onRenamingChange={setRenaming}
+          onRename={actions.rename}
+          onOpen={() => void actions.open(selectedItems)}
+          onOpenWith={(x, y) => setMenu({ x, y, entries: actions.openWithEntries(selectedItems) })}
+          onReveal={(f) => void window.api.files.reveal(f.id)}
+          onTrash={() => void actions.requestTrash(selectedItems)}
+        />
       </div>
       <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-zinc-200 px-4 text-[11px] text-zinc-500 dark:border-zinc-800">
         <span>
@@ -211,6 +286,16 @@ export default function App() {
           </span>
         )}
       </footer>
+      {menu && <Menu at={menu} onClose={closeMenu} />}
+      {actions.pendingTrash && (
+        <TrashDialog
+          files={actions.pendingTrash.files}
+          permanent={actions.pendingTrash.permanent}
+          onConfirm={() => void actions.confirmTrash()}
+          onCancel={actions.cancelTrash}
+        />
+      )}
+      {appsOpen && <AppsDialog state={apps} onChange={setApps} onClose={() => setAppsOpen(false)} />}
       {notice && (
         <div
           role="status"
