@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { ThreeFmApi } from '@shared/api'
 
 declare global {

@@ -55,6 +55,14 @@ const ORDER_BY: Record<SortKey, string> = {
   type: 'f.ext'
 }
 
+// Path of a cataloged, present file; null for unknown ids or missing files.
+export function filePath(id: number): string | null {
+  const row = getDb()
+    .prepare('SELECT path FROM files WHERE id = ? AND missing_since IS NULL')
+    .get(id) as { path: string } | undefined
+  return row?.path ?? null
+}
+
 export function queryFiles(q: FileQuery): FileQueryResult {
   const search = parseSearch(q.search)
   const where: string[] = []

@@ -134,6 +134,10 @@ export interface ThreeFmApi {
   }
 }
 
+// Custom scheme the renderer fetches cataloged files through: threefm://file/<id>
+export const FILE_PROTOCOL = 'threefm'
+export const fileUrl = (id: number): string => `${FILE_PROTOCOL}://file/${id}`
+
 export const IPC = {
   appInfo: 'app:info',
   libraryStats: 'library:stats',

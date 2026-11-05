@@ -21,6 +21,19 @@ export function formatDate(ms: number, withTime = false): string {
 
 export const numberFormat = new Intl.NumberFormat()
 
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m`
+  return `${Math.round(seconds)}s`
+}
+
+// 12.3 → "12.3", 120 → "120", 0.25 → "0.25"
+export function formatMm(value: number): string {
+  return value.toFixed(value < 1 ? 2 : 1).replace(/\.0+$/, '')
+}
+
 export const TYPE_LABEL: Record<FileType, string> = { stl: 'STL', '3mf': '3MF', gcode: 'G-code' }
 
 // Badge colors per file type (background, text).

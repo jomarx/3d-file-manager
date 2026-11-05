@@ -4,11 +4,13 @@ import { IPC } from '@shared/api'
 import { closeDatabase, openDatabase } from './db'
 import { listFolders } from './db/repo'
 import { registerIpc } from './ipc'
+import { handleFileProtocol, registerFileScheme } from './protocol'
 import { Scanner } from './scan/scanner'
 
 // Keep all app data in %APPDATA%\3FM regardless of the package name.
 app.setName('3FM')
 app.setPath('userData', join(app.getPath('appData'), '3FM'))
+registerFileScheme()
 
 let mainWindow: BrowserWindow | null = null
 
@@ -61,6 +63,7 @@ if (!app.requestSingleInstanceLock()) {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.scanProgress, progress)
     })
     registerIpc(dbPath, scanner)
+    handleFileProtocol()
     createWindow()
     // Catch up on anything that changed while 3FM was closed.
     for (const folder of listFolders()) scanner.enqueue(folder.id)
