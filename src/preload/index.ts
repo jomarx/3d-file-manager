@@ -28,7 +28,10 @@ const api: ThreeFmApi = {
     copyPaths: (ids) => ipcRenderer.invoke(IPC.filesCopyPaths, ids),
     rename: (id, name) => ipcRenderer.invoke(IPC.filesRename, id, name),
     trashWarnings: (ids) => ipcRenderer.invoke(IPC.filesTrashWarnings, ids),
-    trash: (ids) => ipcRenderer.invoke(IPC.filesTrash, ids)
+    trash: (ids) => ipcRenderer.invoke(IPC.filesTrash, ids),
+    locate: (id) => ipcRenderer.invoke(IPC.filesLocate, id),
+    removeMissing: () => ipcRenderer.invoke(IPC.filesRemoveMissing),
+    saveThumb: (id, mtime, png) => ipcRenderer.invoke(IPC.filesSaveThumb, id, mtime, png)
   },
   apps: {
     list: () => ipcRenderer.invoke(IPC.appsList),

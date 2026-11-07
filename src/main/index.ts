@@ -8,10 +8,13 @@ import { listFolders } from './db/repo'
 import { registerIpc } from './ipc'
 import { handleFileProtocol, registerFileScheme } from './protocol'
 import { Scanner } from './scan/scanner'
+import { FolderWatcher } from './scan/watcher'
+import { initThumbs, pruneThumbs } from './thumbs'
 
-// Keep all app data in %APPDATA%\3FM regardless of the package name.
+// Keep all app data in %APPDATA%\3FM regardless of the package name, unless
+// --user-data-dir points elsewhere (a separate catalog for testing).
 app.setName('3FM')
-app.setPath('userData', join(app.getPath('appData'), '3FM'))
+if (!app.commandLine.hasSwitch('user-data-dir')) app.setPath('userData', join(app.getPath('appData'), '3FM'))
 registerFileScheme()
 
 let mainWindow: BrowserWindow | null = null
@@ -58,21 +61,33 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus()
   })
 
-  void app.whenReady().then(() => {
+  let watcher: FolderWatcher | null = null
+
+  void app.whenReady().then(async () => {
     const dbPath = join(app.getPath('userData'), '3fm.db')
     openDatabase(dbPath)
+    initThumbs(app.getPath('userData'))
+    await pruneThumbs().catch(() => undefined)
     // Pick up slicers installed, upgraded or removed since the last run.
     syncDetectedApps(detectApps())
+    const folderWatcher = new FolderWatcher((id) => scanner.enqueue(id))
     const scanner = new Scanner((progress) => {
       for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.scanProgress, progress)
+      // A finished scan may have brought a folder online or taken it offline.
+      if (progress.phase !== 'scanning') folderWatcher.sync()
     })
-    registerIpc(dbPath, scanner)
+    watcher = folderWatcher
+    registerIpc(dbPath, scanner, folderWatcher)
     handleFileProtocol()
     createWindow()
-    // Catch up on anything that changed while 3FM was closed.
+    // Catch up on anything that changed while 3FM was closed, then keep up.
     for (const folder of listFolders()) scanner.enqueue(folder.id)
+    folderWatcher.sync()
   })
 
   app.on('window-all-closed', () => app.quit())
-  app.on('will-quit', () => closeDatabase())
+  app.on('will-quit', () => {
+    watcher?.close()
+    closeDatabase()
+  })
 }

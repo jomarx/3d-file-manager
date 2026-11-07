@@ -12,4 +12,6 @@ export type ParseMessage =
   | { type: 'progress'; loaded: number; total: number }
   | { type: 'parsing' }
   | { type: 'done'; model: ParsedModel }
-  | { type: 'error'; message: string }
+  // unavailable: the file couldn't be read (missing, offline drive), as
+  // opposed to read but not understood.
+  | { type: 'error'; message: string; unavailable: boolean }

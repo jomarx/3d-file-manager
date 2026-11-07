@@ -94,9 +94,16 @@ export interface FileItem {
   size: number
   mtime: number
   missing: boolean
+  // When the scan that found it gone ran (SQLite UTC "YYYY-MM-DD HH:MM:SS").
+  missingSince: string | null
+  thumb: ThumbState
   tagIds: number[]
   collectionIds: number[]
 }
+
+// 'ready': a thumbnail is cached; 'none': one couldn't be made from this
+// version of the file; null: not tried yet.
+export type ThumbState = 'ready' | 'none' | null
 
 export type LibraryView = 'all' | 'recent' | 'untagged' | 'missing'
 
@@ -133,6 +140,8 @@ export interface ScanProgress {
   added: number
   updated: number
   missing: number
+  // Files found under a new name or folder, matched to their old catalog entry.
+  moved: number
   message?: string
 }
 
@@ -155,6 +164,10 @@ export interface AppsState {
 export type OpResult = { ok: true } | { ok: false; message: string }
 
 export type RenameResult = { ok: true; file: FileItem } | { ok: false; message: string }
+
+export type LocateResult =
+  | { ok: true; file: FileItem }
+  | { ok: false; reason: 'cancelled' | 'refused'; message: string }
 
 export interface TrashResult {
   trashed: number[]
@@ -197,6 +210,12 @@ export interface ThreeFmApi {
     // Names of files on drives without a Recycle Bin (deleting them may be permanent).
     trashWarnings(ids: number[]): Promise<string[]>
     trash(ids: number[]): Promise<TrashResult>
+    // Asks where a missing file went and points its catalog entry there.
+    locate(id: number): Promise<LocateResult>
+    // Forgets every missing file; resolves with how many were removed.
+    removeMissing(): Promise<number>
+    // Stores a PNG thumbnail for the file as it was at mtime, or null when none can be made.
+    saveThumb(id: number, mtime: number, png: Uint8Array | null): Promise<void>
   }
   apps: {
     list(): Promise<AppsState>
@@ -223,9 +242,11 @@ export interface ThreeFmApi {
   }
 }
 
-// Custom scheme the renderer fetches cataloged files through: threefm://file/<id>
+// Custom scheme the renderer fetches cataloged files through: threefm://file/<id>,
+// and their cached thumbnails: threefm://thumb/<id>. The version busts the cache.
 export const FILE_PROTOCOL = 'threefm'
 export const fileUrl = (id: number): string => `${FILE_PROTOCOL}://file/${id}`
+export const thumbUrl = (id: number, version: number): string => `${FILE_PROTOCOL}://thumb/${id}?v=${version}`
 
 export const IPC = {
   appInfo: 'app:info',
@@ -244,6 +265,9 @@ export const IPC = {
   filesRename: 'files:rename',
   filesTrashWarnings: 'files:trash-warnings',
   filesTrash: 'files:trash',
+  filesLocate: 'files:locate',
+  filesRemoveMissing: 'files:remove-missing',
+  filesSaveThumb: 'files:save-thumb',
   appsList: 'apps:list',
   appsDetect: 'apps:detect',
   appsPickAndAdd: 'apps:pick-and-add',

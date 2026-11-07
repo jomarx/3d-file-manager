@@ -21,6 +21,7 @@ interface FileRow {
   size: number
   mtime: number
   missing_since: string | null
+  thumb_path: string | null
   tag_ids: string | null
   collection_ids: string | null
 }
@@ -40,6 +41,8 @@ function toItem(r: FileRow): FileItem {
     size: r.size,
     mtime: r.mtime,
     missing: r.missing_since !== null,
+    missingSince: r.missing_since,
+    thumb: r.thumb_path === null ? null : r.thumb_path === '' ? 'none' : 'ready',
     tagIds: ids(r.tag_ids),
     collectionIds: ids(r.collection_ids)
   }
@@ -69,7 +72,7 @@ export function filePath(id: number): string | null {
   return row?.path ?? null
 }
 
-const ROW_COLUMNS = `f.id, f.folder_id, f.path, f.name, f.ext, f.size, f.mtime, f.missing_since,
+const ROW_COLUMNS = `f.id, f.folder_id, f.path, f.name, f.ext, f.size, f.mtime, f.missing_since, f.thumb_path,
   (SELECT group_concat(tag_id) FROM file_tags WHERE file_id = f.id) AS tag_ids,
   (SELECT group_concat(collection_id) FROM collection_files WHERE file_id = f.id) AS collection_ids`
 
@@ -100,6 +103,27 @@ export function deleteFileRows(ids: number[]): void {
   const db = getDb()
   const del = db.prepare('DELETE FROM files WHERE id = ?')
   db.transaction(() => ids.forEach((id) => del.run(id)))()
+}
+
+export function deleteMissingRows(): number {
+  return getDb().prepare('DELETE FROM files WHERE missing_since IS NOT NULL').run().changes
+}
+
+// Records the thumbnail file name, or '' for "none can be made". Ignored when
+// the file changed since the renderer read it: the scan has reset it already.
+export function setThumb(id: number, mtime: number, value: string): boolean {
+  return getDb().prepare('UPDATE files SET thumb_path = ? WHERE id = ? AND mtime = ?').run(value, id, mtime).changes > 0
+}
+
+// Thumbnail file names still in use.
+export function thumbNames(): Set<string> {
+  const rows = getDb().prepare("SELECT thumb_path FROM files WHERE thumb_path != ''").all() as { thumb_path: string }[]
+  return new Set(rows.map((r) => r.thumb_path))
+}
+
+export function thumbName(id: number): string | null {
+  const row = getDb().prepare('SELECT thumb_path FROM files WHERE id = ?').get(id) as { thumb_path: string | null } | undefined
+  return row?.thumb_path || null
 }
 
 export function queryFiles(q: FileQuery): FileQueryResult {

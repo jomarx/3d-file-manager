@@ -12,8 +12,10 @@ const ctx = self as unknown as {
 }
 
 ctx.onmessage = async ({ data: { url, ext, size } }) => {
+  let downloaded = false
   try {
     const bytes = await download(url, size)
+    downloaded = true
     ctx.postMessage({ type: 'parsing' })
     const model = parseModel(bytes, ext)
     ctx.postMessage({ type: 'done', model }, transferables(model))
@@ -22,7 +24,7 @@ ctx.onmessage = async ({ data: { url, ext, size } }) => {
       err instanceof ModelError
         ? err.message
         : `Could not preview this file: ${err instanceof Error ? err.message : String(err)}`
-    ctx.postMessage({ type: 'error', message })
+    ctx.postMessage({ type: 'error', message, unavailable: !downloaded })
   }
 }
 

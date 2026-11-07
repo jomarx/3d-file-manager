@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
-import { resolve, sep } from 'node:path'
+import { dirname, resolve, sep } from 'node:path'
 import type { AddFolderResult, Folder, LibraryStats } from '@shared/api'
 import { getDb } from './index'
 
@@ -48,6 +48,14 @@ function isInside(child: string, parent: string): boolean {
   const c = child.toLowerCase()
   const p = parent.toLowerCase()
   return c.startsWith(p.endsWith(sep) ? p : p + sep)
+}
+
+// The cataloged folder a file at `path` belongs to, if any.
+export function folderContaining(path: string): Folder | undefined {
+  const dir = normalizeDir(dirname(path))
+  return listFolders()
+    .filter((f) => f.path.toLowerCase() === dir.toLowerCase() || (f.recursive && isInside(dir, f.path)))
+    .sort((a, b) => b.path.length - a.path.length)[0]
 }
 
 export function addFolder(rawPath: string, recursive = true): AddFolderResult {

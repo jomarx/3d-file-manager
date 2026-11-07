@@ -58,14 +58,7 @@ export class ViewerScene {
     this.renderer.domElement.style.display = 'block'
     host.appendChild(this.renderer.domElement)
 
-    this.camera.up.set(0, 0, 1)
-    const key = new DirectionalLight(0xffffff, 2.2)
-    key.position.set(-0.5, 1, 1.2) // camera space: from above, slightly left
-    this.camera.add(key)
-    this.scene.add(this.camera)
-    const sky = new HemisphereLight(0xffffff, 0x50555f, 1.4)
-    sky.position.set(0, 0, 1)
-    this.scene.add(sky)
+    addLights(this.scene, this.camera)
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
     this.controls.zoomToCursor = true
@@ -80,7 +73,7 @@ export class ViewerScene {
   setGeometry(geometry: ModelGeometry | null): void {
     this.clear()
     if (!geometry) return this.render()
-    this.content = geometry.kind === 'mesh' ? buildMesh(geometry) : buildToolpath(geometry)
+    this.content = buildObject(geometry)
     if (geometry.kind === 'toolpath') this.toolpath = { geometry, object: this.content as LineSegments }
     this.scene.add(this.content)
     this.bounds = geometry.bounds
@@ -99,18 +92,8 @@ export class ViewerScene {
 
   resetView(): void {
     if (!this.bounds) return
-    const { min, max } = this.bounds
-    const center = new Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2)
-    const radius = Math.max(1, new Vector3(max[0] - min[0], max[1] - min[1], max[2] - min[2]).length() / 2)
-    const fov = (this.camera.fov * Math.PI) / 180
-    const fit = Math.min(fov, 2 * Math.atan(Math.tan(fov / 2) * this.camera.aspect))
     // Some margin so tall parts clear the toolbar buttons in the corner.
-    const distance = (radius / Math.sin(fit / 2)) * 1.2
-    this.camera.near = Math.max(0.01, distance / 1000)
-    this.camera.far = distance * 100
-    this.camera.updateProjectionMatrix()
-    this.camera.position.copy(center).addScaledVector(VIEW_DIRECTION, distance)
-    this.controls.target.copy(center)
+    this.controls.target.copy(frameBounds(this.camera, this.bounds, 1.2))
     this.controls.update()
     this.render()
   }
@@ -142,10 +125,7 @@ export class ViewerScene {
     for (const obj of [this.content, this.grid]) {
       if (!obj) continue
       this.scene.remove(obj)
-      const holder = obj as Mesh
-      holder.geometry?.dispose()
-      const materials = holder.material
-      for (const m of Array.isArray(materials) ? materials : materials ? [materials] : []) (m as Material).dispose()
+      disposeObject(obj)
     }
     this.content = null
     this.grid = null
@@ -176,6 +156,47 @@ export class ViewerScene {
     cancelAnimationFrame(this.frame)
     this.frame = requestAnimationFrame(() => this.renderer.render(this.scene, this.camera))
   }
+}
+
+// A light that follows the camera from above left, plus soft sky light. The
+// camera must be in the scene for its light to count.
+export function addLights(scene: Scene, camera: PerspectiveCamera): void {
+  camera.up.set(0, 0, 1)
+  const key = new DirectionalLight(0xffffff, 2.2)
+  key.position.set(-0.5, 1, 1.2) // camera space: from above, slightly left
+  camera.add(key)
+  scene.add(camera)
+  const sky = new HemisphereLight(0xffffff, 0x50555f, 1.4)
+  sky.position.set(0, 0, 1)
+  scene.add(sky)
+}
+
+// Places the camera to see all of ounds from the default angle, with
+// margin (1 = touching the edges). Returns the point it looks at.
+export function frameBounds(camera: PerspectiveCamera, bounds: Bounds, margin: number): Vector3 {
+  const { min, max } = bounds
+  const center = new Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2)
+  const radius = Math.max(1, new Vector3(max[0] - min[0], max[1] - min[1], max[2] - min[2]).length() / 2)
+  const fov = (camera.fov * Math.PI) / 180
+  const fit = Math.min(fov, 2 * Math.atan(Math.tan(fov / 2) * camera.aspect))
+  const distance = (radius / Math.sin(fit / 2)) * margin
+  camera.near = Math.max(0.01, distance / 1000)
+  camera.far = distance * 100
+  camera.updateProjectionMatrix()
+  camera.position.copy(center).addScaledVector(VIEW_DIRECTION, distance)
+  camera.lookAt(center)
+  return center
+}
+
+export function buildObject(geometry: ModelGeometry): Mesh | LineSegments {
+  return geometry.kind === 'mesh' ? buildMesh(geometry) : buildToolpath(geometry)
+}
+
+export function disposeObject(obj: Object3D): void {
+  const holder = obj as Mesh
+  holder.geometry?.dispose()
+  const materials = holder.material
+  for (const m of Array.isArray(materials) ? materials : materials ? [materials] : []) (m as Material).dispose()
 }
 
 function buildMesh(g: MeshGeometry): Mesh {

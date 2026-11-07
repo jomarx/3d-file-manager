@@ -1,7 +1,8 @@
-import { useEffect, useRef, type DragEvent, type MouseEvent } from 'react'
-import type { FileItem, SortKey, Tag } from '@shared/api'
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent } from 'react'
+import { thumbUrl, type FileItem, type SortKey, type Tag } from '@shared/api'
 import type { ViewMode } from '../types'
 import { formatBytes, formatDate, TYPE_LABEL, TYPE_STYLE, dirname } from '../format'
+import { useThumb } from '../thumbs'
 import Highlight from './Highlight'
 
 interface Props {
@@ -11,6 +12,9 @@ interface Props {
   total: number
   terms: string[]
   filtered: boolean
+  // The Missing view, which explains itself and offers to forget everything in it.
+  missingView: boolean
+  onRemoveMissing(): void
   viewMode: ViewMode
   sort: SortKey
   desc: boolean
@@ -67,18 +71,27 @@ export default function FileArea(props: Props) {
   }
 
   if (props.total === 0) {
+    const nothingMissing = props.missingView && !props.filtered
     return (
       <main className="flex min-w-0 flex-1 items-center justify-center p-6">
         <div className="text-center">
           <p className="text-sm font-medium">
-            {props.scanning ? 'Scanning…' : props.filtered ? 'No matches' : 'No files here'}
+            {nothingMissing
+              ? 'Nothing is missing'
+              : props.scanning
+                ? 'Scanning…'
+                : props.filtered
+                  ? 'No matches'
+                  : 'No files here'}
           </p>
           <p className="mt-1 text-xs text-zinc-500">
-            {props.scanning
-              ? 'Files will appear as they are found.'
-              : props.filtered
-                ? 'Try fewer words or clear the type filters.'
-                : 'No STL, 3MF or G-code files were found in this view.'}
+            {nothingMissing
+              ? 'Files that disappear from disk show up here.'
+              : props.scanning
+                ? 'Files will appear as they are found.'
+                : props.filtered
+                  ? 'Try fewer words or clear the type filters.'
+                  : 'No STL, 3MF or G-code files were found in this view.'}
           </p>
         </div>
       </main>
@@ -94,6 +107,22 @@ export default function FileArea(props: Props) {
         if (e.target === e.currentTarget) props.onClearSelection()
       }}
     >
+      {props.missingView && (
+        <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+          <p className="min-w-0 flex-1">
+            These files are no longer where the catalog last saw them. Files moved or renamed in Windows are
+            matched up again when their folder is scanned. For the rest, choose Locate… to point to the file, or
+            remove them from the catalog.
+          </p>
+          <button
+            type="button"
+            onClick={props.onRemoveMissing}
+            className="h-7 shrink-0 rounded-md border border-amber-300 px-3 font-medium hover:bg-amber-100 dark:border-amber-500/30 dark:hover:bg-amber-500/20"
+          >
+            Remove all…
+          </button>
+        </div>
+      )}
       {props.viewMode === 'grid' ? <Grid {...props} /> : <List {...props} />}
       <div ref={sentinelRef} className="h-px" />
     </main>
@@ -165,19 +194,34 @@ function TagDots({ item, tags }: { item: FileItem; tags: Map<number, Tag> }) {
   )
 }
 
-// Placeholder until thumbnails are generated: a type badge on a tinted tile.
+// The cached thumbnail, made on first sight. Until then, or for files with
+// nothing to draw, a cube outline stands in.
 function Thumb({ item }: { item: FileItem }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const thumb = useThumb(item, ref)
+  const [broken, setBroken] = useState<string | null>(null)
+  const version = `${item.id}:${item.mtime}`
   return (
-    <div className="relative grid aspect-[4/3] place-items-center bg-zinc-100 dark:bg-zinc-900">
-      <svg viewBox="0 0 24 24" className="size-10 text-zinc-300 dark:text-zinc-700" aria-hidden>
-        <path
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9L12 2.5Zm0 0v0M3 7.5l9 5 9-5M12 12.5v9"
+    <div ref={ref} className="relative grid aspect-[4/3] place-items-center bg-zinc-100 dark:bg-zinc-900">
+      {thumb === 'ready' && broken !== version ? (
+        <img
+          src={thumbUrl(item.id, item.mtime)}
+          alt=""
+          draggable={false}
+          onError={() => setBroken(version)}
+          className={`absolute inset-0 h-full w-full object-contain p-1.5 ${item.missing ? 'opacity-40 grayscale' : ''}`}
         />
-      </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="size-10 text-zinc-300 dark:text-zinc-700" aria-hidden>
+          <path
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9L12 2.5Zm0 0v0M3 7.5l9 5 9-5M12 12.5v9"
+          />
+        </svg>
+      )}
       <TypeBadge item={item} className="absolute top-2 left-2" />
     </div>
   )

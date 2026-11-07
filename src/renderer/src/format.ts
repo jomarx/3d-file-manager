@@ -19,6 +19,9 @@ export function formatDate(ms: number, withTime = false): string {
   return (withTime ? dateTimeFormat : dateFormat).format(ms)
 }
 
+// SQLite's datetime('now'), "YYYY-MM-DD HH:MM:SS" in UTC, as milliseconds.
+export const parseSqlDate = (value: string): number => Date.parse(value.replace(' ', 'T') + 'Z')
+
 export const numberFormat = new Intl.NumberFormat()
 
 export function formatDuration(seconds: number): string {

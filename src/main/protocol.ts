@@ -1,12 +1,14 @@
 import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import { protocol } from 'electron'
 import { FILE_PROTOCOL } from '@shared/api'
-import { filePath } from './db/files'
+import { filePath, thumbName } from './db/files'
+import { thumbFile } from './thumbs'
 
-// threefm://file/<id> streams a cataloged file to the renderer. Only ids in the
-// catalog resolve, so the page can never read arbitrary paths.
+// threefm://file/<id> streams a cataloged file to the renderer and
+// threefm://thumb/<id> its cached thumbnail. Only ids in the catalog resolve,
+// so the page can never read arbitrary paths.
 
 export function registerFileScheme(): void {
   protocol.registerSchemesAsPrivileged([
@@ -27,6 +29,7 @@ export function handleFileProtocol(): void {
   protocol.handle(FILE_PROTOCOL, async (request) => {
     const url = new URL(request.url)
     const id = Number(url.pathname.replace(/^\//, ''))
+    if (url.hostname === 'thumb') return thumbResponse(id)
     const path = url.hostname === 'file' && Number.isInteger(id) ? filePath(id) : null
     if (!path) return new Response('Not found', { status: 404, headers: headers() })
     try {
@@ -39,4 +42,15 @@ export function handleFileProtocol(): void {
       return new Response('File unavailable', { status: 410, headers: headers() })
     }
   })
+}
+
+async function thumbResponse(id: number): Promise<Response> {
+  const name = Number.isInteger(id) ? thumbName(id) : null
+  try {
+    if (!name) throw new Error('no thumbnail')
+    const data = await readFile(thumbFile(name))
+    return new Response(data, { headers: headers({ 'Content-Type': 'image/png' }) })
+  } catch {
+    return new Response('Not found', { status: 404, headers: headers() })
+  }
 }

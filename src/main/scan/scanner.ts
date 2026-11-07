@@ -2,10 +2,14 @@ import { existsSync } from 'node:fs'
 import type { ScanProgress } from '@shared/api'
 import { getDb } from '../db'
 import { getFolder } from '../db/repo'
+import { missingCandidates, moveFileRow, pairMoves, presentPlace, type MoveCandidate } from '../db/moves'
 import { walk, type FoundFile } from './walk'
 
 const BATCH_SIZE = 500
 const PROGRESS_INTERVAL_MS = 400
+// How long a new file can still turn out to be one moved from a folder
+// scanned later. Startup scans of a whole catalog fit well within this.
+const RECENT_MS = 60 * 60 * 1000
 
 interface KnownFile {
   id: number
@@ -21,6 +25,8 @@ interface KnownFile {
 export class Scanner {
   private queue: number[] = []
   private running = false
+  // Files new to the catalog this session, for moves across folders.
+  private recent = new Map<number, MoveCandidate & { at: number }>()
 
   constructor(private readonly emit: (progress: ScanProgress) => void) {}
 
@@ -53,7 +59,8 @@ export class Scanner {
       seen: 0,
       added: 0,
       updated: 0,
-      missing: 0
+      missing: 0,
+      moved: 0
     }
 
     // An unplugged drive must not turn every file into "missing".
@@ -82,11 +89,15 @@ export class Scanner {
          size = excluded.size, mtime = excluded.mtime, missing_since = NULL,
          quick_hash = NULL, meta_json = NULL, thumb_path = NULL, indexed_at = datetime('now')`
     )
+    const idOf = db.prepare('SELECT id FROM files WHERE path = ?').pluck()
     const restore = db.prepare('UPDATE files SET missing_since = NULL WHERE id = ?')
     const markMissing = db.prepare(
       "UPDATE files SET missing_since = datetime('now') WHERE id = ? AND missing_since IS NULL"
     )
 
+    // Ids of files this scan added and found gone, for move detection.
+    const added = new Set<number>()
+    const gone = new Set<number>()
     const applyBatch = db.transaction((batch: FoundFile[]) => {
       for (const f of batch) {
         const key = f.path.toLowerCase()
@@ -95,6 +106,9 @@ export class Scanner {
         if (!prev) {
           upsert.run({ folderId, ...f })
           progress.added++
+          const id = idOf.get(f.path) as number
+          added.add(id)
+          this.recent.set(id, { id, name: f.name, ext: f.ext, size: f.size, mtime: f.mtime, at: Date.now() })
         } else if (prev.size !== f.size || prev.mtime !== f.mtime) {
           upsert.run({ folderId, ...f })
           progress.updated++
@@ -125,9 +139,13 @@ export class Scanner {
       // Whatever was indexed before but not seen now is gone from disk.
       db.transaction(() => {
         for (const prev of known.values()) {
-          if (!prev.missing && markMissing.run(prev.id).changes > 0) progress.missing++
+          if (!prev.missing && markMissing.run(prev.id).changes > 0) {
+            progress.missing++
+            gone.add(prev.id)
+          }
         }
       })()
+      if (added.size > 0 || gone.size > 0) this.followMoves(progress, added, gone)
       this.emit({ ...progress, phase: 'done' })
     } catch (error) {
       applyBatch(batch)
@@ -136,6 +154,25 @@ export class Scanner {
         phase: 'error',
         message: error instanceof Error ? error.message : String(error)
       })
+    }
+  }
+
+  // Hands each new file that is really a missing one moved or renamed over to
+  // the missing entry. `added` and `gone` are this scan's, to fix its counts.
+  private followMoves(progress: ScanProgress, added: Set<number>, gone: Set<number>): void {
+    const now = Date.now()
+    const lostFiles = missingCandidates()
+    const lostIds = new Set(lostFiles.map((c) => c.id))
+    // A recent file that has gone missing since is a candidate to move, not a destination.
+    for (const [id, c] of this.recent) if (now - c.at > RECENT_MS || lostIds.has(id)) this.recent.delete(id)
+    for (const { lost, fresh } of pairMoves(lostFiles, [...this.recent.values()])) {
+      const place = presentPlace(fresh.id)
+      this.recent.delete(fresh.id)
+      if (!place) continue
+      moveFileRow(lost.id, place)
+      progress.moved++
+      if (added.has(fresh.id)) progress.added--
+      if (gone.has(lost.id)) progress.missing--
     }
   }
 }

@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { FileItem } from '@shared/api'
+import { thumbUrl, type FileItem } from '@shared/api'
 import { Feature, type ParsedModel, type ToolpathGeometry } from '@shared/model'
 import { useModel, type ModelState } from '../hooks/useModel'
 import { FEATURE_STYLE } from '../viewer/scene'
-import { formatBytes, formatDate, formatDuration, formatMm, numberFormat, TYPE_LABEL, dirname } from '../format'
+import {
+  formatBytes,
+  formatDate,
+  formatDuration,
+  formatMm,
+  numberFormat,
+  parseSqlDate,
+  TYPE_LABEL,
+  dirname
+} from '../format'
 import ModelViewer, { ViewerButton } from './ModelViewer'
 
 interface Props {
@@ -16,6 +25,8 @@ interface Props {
   // Shows the "Open with" menu at a point.
   onOpenWith(x: number, y: number): void
   onReveal(file: FileItem): void
+  // Asks where a missing file went.
+  onLocate(file: FileItem): void
   onTrash(): void
   // Tags and collections of the selection.
   organize: ReactNode
@@ -25,7 +36,7 @@ interface Props {
 export default function PreviewPanel(props: Props) {
   const { selected } = props
   const file = selected.length === 1 ? selected[0] : null
-  const { state, loadLarge } = useModel(file)
+  const { state, loadLarge } = useModel(file && !file.missing ? file : null)
   const model = state.status === 'ready' ? state.model : null
   const toolpath = model?.geometry?.kind === 'toolpath' ? model.geometry : null
 
@@ -80,6 +91,16 @@ export default function PreviewPanel(props: Props) {
             <Placeholder>Select a file to preview</Placeholder>
           ) : !file ? (
             <Placeholder>{selected.length} files selected</Placeholder>
+          ) : file.missing ? (
+            file.thumb === 'ready' ? (
+              <img
+                src={thumbUrl(file.id, file.mtime)}
+                alt=""
+                className="absolute inset-0 h-full w-full object-contain p-4 opacity-40 grayscale"
+              />
+            ) : (
+              <Placeholder>This file is missing from disk.</Placeholder>
+            )
           ) : model?.geometry && !(showImage && thumbnailUrl) ? (
             <ModelViewer geometry={model.geometry} layers={toolpath ? layers : undefined} toolbar={toolbar} />
           ) : model && thumbnailUrl ? (
@@ -110,7 +131,12 @@ export default function PreviewPanel(props: Props) {
               {file.name}
             </h2>
           )}
-          {file.missing && <p className="mt-1 text-xs text-red-500 dark:text-red-400">Missing from disk</p>}
+          {file.missing && (
+            <p className="mt-1 text-xs text-red-500 dark:text-red-400">
+              Missing from disk
+              {file.missingSince && ` since ${formatDate(parseSqlDate(file.missingSince), true)}`}
+            </p>
+          )}
           <Actions {...props} />
           {props.organize}
           <Details>
@@ -141,6 +167,7 @@ export default function PreviewPanel(props: Props) {
 function Actions(props: Props) {
   const { selected } = props
   const one = selected.length === 1 && !selected[0].missing ? selected[0] : null
+  const lost = selected.length === 1 && selected[0].missing ? selected[0] : null
   const allMissing = selected.every((f) => f.missing)
   return (
     <div className="mt-3 flex flex-col gap-2">
@@ -169,9 +196,13 @@ function Actions(props: Props) {
         </button>
       </div>
       <div className="flex gap-2">
-        <ActionButton disabled={!one} onClick={() => one && props.onReveal(one)}>
-          Show in folder
-        </ActionButton>
+        {lost ? (
+          <ActionButton onClick={() => props.onLocate(lost)}>Locate…</ActionButton>
+        ) : (
+          <ActionButton disabled={!one} onClick={() => one && props.onReveal(one)}>
+            Show in folder
+          </ActionButton>
+        )}
         <ActionButton disabled={!one} onClick={() => props.onRenamingChange(true)} title="F2">
           Rename
         </ActionButton>

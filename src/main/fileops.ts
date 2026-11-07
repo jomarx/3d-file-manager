@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { lstat, rename } from 'node:fs/promises'
-import { dirname, join, parse } from 'node:path'
-import type { FileItem, OpResult, RenameResult, TrashResult } from '@shared/api'
+import { lstat, rename, stat } from 'node:fs/promises'
+import { basename, dirname, join, parse, resolve } from 'node:path'
+import { extensionOf, type FileItem, type LocateResult, type OpResult, type RenameResult, type TrashResult } from '@shared/api'
 import { defaultAppFor, getApp, type LaunchApp } from './db/apps'
 import { deleteFileRows, getFile, getFiles, renameFileRow } from './db/files'
+import { moveFileRow } from './db/moves'
+import { folderContaining } from './db/repo'
 
 // Opening many files at once is almost always a misclick; slicers take a
 // batch in one window, the Windows default opens one window per file.
@@ -68,6 +70,38 @@ export async function renameFile(id: number, name: string): Promise<RenameResult
   } catch (error) {
     await rename(target, file.path).catch(() => undefined)
     return fail(`The catalog could not be updated: ${describe(error)}`)
+  }
+}
+
+const refuse = (message: string) => ({ ok: false as const, reason: 'refused' as const, message })
+
+// Points a missing file's catalog entry at path, where the user found it.
+// The file must be in a cataloged folder, or the next scan would lose it again.
+export async function locateFile(id: number, path: string): Promise<LocateResult> {
+  const file = getFile(id)
+  if (!file) return refuse('This file is no longer in the catalog.')
+  if (!file.missing) return refuse(`${file.name} is not missing.`)
+  const full = resolve(path)
+  const name = basename(full)
+  const kind = extensionOf(name)
+  if (!kind) return refuse('Pick an STL, 3MF or G-code file.')
+  const folder = folderContaining(full)
+  if (!folder) return refuse(`${dirname(full)} is not in the catalog. Add its folder, then try again.`)
+  let info
+  try {
+    info = await stat(full)
+  } catch (error) {
+    return refuse(describe(error))
+  }
+  moveFileRow(id, { folderId: folder.id, path: full, name, ext: kind.ext, size: info.size, mtime: Math.floor(info.mtimeMs) })
+  return { ok: true, file: getFile(id)! }
+}
+
+// The closest folder to path that still exists, to start a file picker in.
+export function nearestDir(path: string): string | undefined {
+  for (let dir = dirname(path); ; dir = dirname(dir)) {
+    if (existsSync(dir)) return dir
+    if (dirname(dir) === dir) return undefined
   }
 }
 

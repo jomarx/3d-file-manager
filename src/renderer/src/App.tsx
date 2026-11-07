@@ -38,6 +38,7 @@ export default function App() {
   const [appsOpen, setAppsOpen] = useState(false)
   const [menu, setMenu] = useState<MenuAt | null>(null)
   const [renaming, setRenaming] = useState(false)
+  const [removingMissing, setRemovingMissing] = useState(false)
   const anchor = useRef<number | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
 
@@ -77,6 +78,13 @@ export default function App() {
         })
         if (progress.phase === 'error') setNotice(`Scan of ${progress.path} failed: ${progress.message}`)
         if (progress.phase === 'offline') setNotice(`${progress.path} is offline. Its files are kept.`)
+        if (progress.phase === 'done' && progress.moved > 0) {
+          setNotice(
+            progress.moved === 1
+              ? 'Found 1 file that was moved or renamed. Its tags and collections are kept.'
+              : `Found ${progress.moved} files that were moved or renamed. Their tags and collections are kept.`
+          )
+        }
         void refreshSidebar()
         refreshFiles.current()
       }),
@@ -198,7 +206,7 @@ export default function App() {
     const target = e.target as HTMLElement
     const typing =
       target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
-    const modal = appsOpen || actions.pendingTrash || organize.dialogOpen
+    const modal = appsOpen || actions.pendingTrash || organize.dialogOpen || removingMissing
     if (modal) return
     if (e.key === 'Escape') setSelected(new Set())
     if (e.key === 'a' && (e.ctrlKey || e.metaKey) && !typing) {
@@ -245,6 +253,14 @@ export default function App() {
     if (scope.kind === 'folder' && scope.id === folder.id) {
       setScope({ kind: 'library', id: 'all' })
     }
+    await refreshSidebar()
+    files.refresh()
+  }
+
+  const removeMissing = async () => {
+    setRemovingMissing(false)
+    const n = await window.api.files.removeMissing()
+    setNotice(n === 1 ? 'Removed 1 missing file from the catalog.' : `Removed ${n} missing files from the catalog.`)
     await refreshSidebar()
     files.refresh()
   }
@@ -298,6 +314,8 @@ export default function App() {
           total={files.total}
           terms={files.terms}
           filtered={filtered}
+          missingView={scope.kind === 'library' && scope.id === 'missing'}
+          onRemoveMissing={() => setRemovingMissing(true)}
           viewMode={viewMode}
           sort={sort}
           desc={desc}
@@ -321,6 +339,7 @@ export default function App() {
           onOpen={() => void actions.open(selectedItems)}
           onOpenWith={(x, y) => setMenu({ x, y, entries: actions.openWithEntries(selectedItems) })}
           onReveal={(f) => void window.api.files.reveal(f.id)}
+          onLocate={(f) => void actions.locate(f)}
           onTrash={() => void actions.requestTrash(selectedItems)}
           organize={
             <OrganizeSection
@@ -379,6 +398,24 @@ export default function App() {
               ? 'No files are in it.'
               : `It is removed from ${organize.deleting.label.fileCount} ${organize.deleting.label.fileCount === 1 ? 'file' : 'files'}.`}{' '}
             The files themselves are not touched.
+          </p>
+        </ConfirmDialog>
+      )}
+      {removingMissing && (
+        <ConfirmDialog
+          title="Remove missing files"
+          confirmLabel="Remove"
+          onConfirm={() => void removeMissing()}
+          onCancel={() => setRemovingMissing(false)}
+        >
+          <p>
+            Remove {stats.missing === 1 ? 'the missing file' : `all ${numberFormat.format(stats.missing)} missing files`}{' '}
+            from the catalog?
+          </p>
+          <p className="mt-2 text-zinc-500">
+            {stats.missing === 1 ? 'Its' : 'Their'} tags and collection entries go with{' '}
+            {stats.missing === 1 ? 'it' : 'them'}. Nothing on disk changes, and a file that turns up again is added
+            back on the next scan, without its tags.
           </p>
         </ConfirmDialog>
       )}

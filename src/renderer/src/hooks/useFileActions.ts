@@ -58,6 +58,16 @@ export function useFileActions(o: Options) {
     return true
   }
 
+  const locate = async (file: FileItem) => {
+    const result = await window.api.files.locate(file.id)
+    if (!result.ok) {
+      if (result.reason !== 'cancelled') o.notify(result.message)
+      return
+    }
+    o.notify(`Found ${result.file.name}. Its tags and collections are kept.`)
+    o.changed()
+  }
+
   const requestTrash = async (files: FileItem[]) => {
     if (files.length === 0) return
     const permanent = await window.api.files.trashWarnings(files.map((f) => f.id))
@@ -98,17 +108,20 @@ export function useFileActions(o: Options) {
   // organize holds the tag and collection entries, shown above Rename.
   const menuEntries = (files: FileItem[], organize: MenuEntry[] = []): MenuEntry[] => {
     const one = files.length === 1 && !files[0].missing ? files[0] : null
+    const lost = files.length === 1 && files[0].missing ? files[0] : null
     const allMissing = files.every((f) => f.missing)
     return [
       { label: openLabel(files), hint: 'Enter', bold: true, disabled: allMissing, onSelect: () => void open(files) },
       { separator: true },
       ...openWithEntries(files),
       { separator: true },
-      {
-        label: 'Show in folder',
-        disabled: !one,
-        onSelect: () => one && void window.api.files.reveal(one.id)
-      },
+      lost
+        ? { label: 'Locate…', onSelect: () => void locate(lost) }
+        : {
+            label: 'Show in folder',
+            disabled: !one,
+            onSelect: () => one && void window.api.files.reveal(one.id)
+          },
       { label: files.length === 1 ? 'Copy path' : 'Copy paths', onSelect: () => void copyPaths(files) },
       { separator: true },
       ...(organize.length > 0 ? [...organize, { separator: true } as const] : []),
@@ -126,6 +139,7 @@ export function useFileActions(o: Options) {
     openLabel,
     open,
     rename,
+    locate,
     requestTrash,
     pendingTrash,
     confirmTrash,

@@ -4,13 +4,22 @@ import {
   type AddAppResult,
   type AddFolderResult,
   type AppInfo,
-  type FileQuery
+  type FileQuery,
+  type LocateResult
 } from '@shared/api'
 import { detectApps } from './apps/detect'
 import { addApp, appsState, removeApp, setDefaultApp, syncDetectedApps } from './db/apps'
 import { SCHEMA_VERSION } from './db/migrations'
-import { getFile, getFiles, queryFiles } from './db/files'
-import { openFiles, openFilesWithSystem, renameFile, trashFiles, trashWarnings } from './fileops'
+import { deleteMissingRows, getFile, getFiles, queryFiles } from './db/files'
+import {
+  locateFile,
+  nearestDir,
+  openFiles,
+  openFilesWithSystem,
+  renameFile,
+  trashFiles,
+  trashWarnings
+} from './fileops'
 import { addFolder, getFolder, libraryStats, listFolders, removeFolder } from './db/repo'
 import { assignTag, createTag, deleteTag, listTags, updateTag } from './db/tags'
 import {
@@ -21,8 +30,10 @@ import {
   updateCollection
 } from './db/collections'
 import type { Scanner } from './scan/scanner'
+import type { FolderWatcher } from './scan/watcher'
+import { saveThumb } from './thumbs'
 
-export function registerIpc(dbPath: string, scanner: Scanner): void {
+export function registerIpc(dbPath: string, scanner: Scanner, watcher: FolderWatcher): void {
   ipcMain.handle(IPC.appInfo, (): AppInfo => ({
     name: app.getName(),
     version: app.getVersion(),
@@ -47,7 +58,10 @@ export function registerIpc(dbPath: string, scanner: Scanner): void {
     return result
   })
 
-  ipcMain.handle(IPC.foldersRemove, (_e, id: number) => removeFolder(id))
+  ipcMain.handle(IPC.foldersRemove, (_e, id: number) => {
+    removeFolder(id)
+    watcher.sync()
+  })
 
   ipcMain.handle(IPC.foldersReveal, async (_e, id: number) => {
     const folder = getFolder(id)
@@ -78,6 +92,29 @@ export function registerIpc(dbPath: string, scanner: Scanner): void {
   ipcMain.handle(IPC.filesTrashWarnings, (_e, ids: number[]) => trashWarnings(ids))
 
   ipcMain.handle(IPC.filesTrash, (_e, ids: number[]) => trashFiles(ids, (p) => shell.trashItem(p)))
+
+  ipcMain.handle(IPC.filesLocate, async (event, id: number): Promise<LocateResult> => {
+    const file = getFile(id)
+    if (!file) return { ok: false, reason: 'refused', message: 'This file is no longer in the catalog.' }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const options = {
+      title: `Locate ${file.name}`,
+      defaultPath: nearestDir(file.path),
+      properties: ['openFile' as const],
+      filters: [{ name: 'STL, 3MF and G-code', extensions: ['stl', '3mf', 'gcode'] }]
+    }
+    const picked = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    if (picked.canceled || picked.filePaths.length === 0) {
+      return { ok: false, reason: 'cancelled', message: 'No file selected.' }
+    }
+    return locateFile(id, picked.filePaths[0])
+  })
+
+  ipcMain.handle(IPC.filesRemoveMissing, () => deleteMissingRows())
+
+  ipcMain.handle(IPC.filesSaveThumb, (_e, id: number, mtime: number, png: Uint8Array | null) =>
+    saveThumb(id, mtime, png)
+  )
 
   ipcMain.handle(IPC.appsList, () => appsState())
 
