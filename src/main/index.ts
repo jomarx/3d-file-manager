@@ -6,8 +6,10 @@ import { closeDatabase, openDatabase } from './db'
 import { syncDetectedApps } from './db/apps'
 import { listFolders } from './db/repo'
 import { registerIpc } from './ipc'
+import { queueLaunch } from './launch'
 import { handleFileProtocol, registerFileScheme } from './protocol'
 import { Scanner } from './scan/scanner'
+import { loadSettings } from './settings'
 import { FolderWatcher } from './scan/watcher'
 import { initThumbs, pruneThumbs } from './thumbs'
 
@@ -55,7 +57,12 @@ function createWindow(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  // Opening a file from Explorer while 3FM runs starts a second instance, which
+  // hands its command line over here and quits.
+  app.on('second-instance', (_e, argv, cwd) => {
+    void app.whenReady().then(() => {
+      if (queueLaunch(argv, cwd)) mainWindow?.webContents.send(IPC.launchRequested)
+    })
     if (!mainWindow) return
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
@@ -66,6 +73,8 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     const dbPath = join(app.getPath('userData'), '3fm.db')
     openDatabase(dbPath)
+    // Sets the theme before the window picks its background colour.
+    loadSettings(app.getPath('userData'))
     initThumbs(app.getPath('userData'))
     await pruneThumbs().catch(() => undefined)
     // Pick up slicers installed, upgraded or removed since the last run.
@@ -79,6 +88,8 @@ if (!app.requestSingleInstanceLock()) {
     watcher = folderWatcher
     registerIpc(dbPath, scanner, folderWatcher)
     handleFileProtocol()
+    // The window picks this up once it has loaded.
+    queueLaunch(process.argv, process.cwd())
     createWindow()
     // Catch up on anything that changed while 3FM was closed, then keep up.
     for (const folder of listFolders()) scanner.enqueue(folder.id)

@@ -10,6 +10,8 @@ export interface FilesState {
   total: number
   terms: string[]
   loading: boolean
+  // The items are for the current params, not left over from earlier ones.
+  settled: boolean
   loadMore(): void
   // Re-run the query without losing how far the user has scrolled.
   refresh(): void
@@ -20,6 +22,7 @@ export function useFiles(params: Params): FilesState {
   const [total, setTotal] = useState(0)
   const [terms, setTerms] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadedKey, setLoadedKey] = useState<string | null>(null)
 
   // Each new query bumps the generation so late responses from an older
   // query are dropped instead of overwriting newer results.
@@ -33,10 +36,12 @@ export function useFiles(params: Params): FilesState {
   const fetchFrom = useCallback(async (offset: number, limit: number, replace: boolean) => {
     const gen = replace ? ++generation.current : generation.current
     setLoading(true)
+    const requested = JSON.stringify(paramsRef.current)
     try {
       const res = await window.api.files.query({ ...paramsRef.current, offset, limit })
       if (gen !== generation.current) return
       setItems((prev) => (replace ? res.items : [...prev, ...res.items]))
+      if (replace) setLoadedKey(requested)
       setTotal(res.total)
       setTerms(res.terms)
     } finally {
@@ -58,7 +63,7 @@ export function useFiles(params: Params): FilesState {
     void fetchFrom(0, Math.max(itemsRef.current.length, PAGE_SIZE), true)
   }, [fetchFrom])
 
-  return { items, total, terms, loading, loadMore, refresh }
+  return { items, total, terms, loading, settled: loadedKey === key, loadMore, refresh }
 }
 
 export function useDebounced<T>(value: T, ms: number): T {

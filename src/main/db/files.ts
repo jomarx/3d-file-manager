@@ -83,6 +83,14 @@ export function getFile(id: number): FileItem | undefined {
   return row && toItem(row)
 }
 
+// The catalog entry at a path; paths compare without case, as on Windows.
+export function fileByPath(path: string): FileItem | undefined {
+  const row = getDb().prepare(`SELECT ${ROW_COLUMNS} FROM files f WHERE f.path = ?`).get(path) as
+    | FileRow
+    | undefined
+  return row && toItem(row)
+}
+
 // Cataloged files for the given ids, in the order given; unknown ids are skipped.
 export function getFiles(ids: number[]): FileItem[] {
   return ids.map(getFile).filter((f): f is FileItem => f !== undefined)

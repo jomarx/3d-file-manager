@@ -20,6 +20,8 @@ interface Props {
   desc: boolean
   onSort(sort: SortKey, desc: boolean): void
   selected: Set<number>
+  // A file to bring into view; a new object scrolls again.
+  scrollTo: { id: number } | null
   onItemClick(item: FileItem, event: MouseEvent): void
   onItemOpen(item: FileItem): void
   onItemContextMenu(item: FileItem, event: MouseEvent): void
@@ -48,6 +50,11 @@ export default function FileArea(props: Props) {
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [onLoadMore, props.items.length])
+
+  useEffect(() => {
+    if (!props.scrollTo) return
+    scrollRef.current?.querySelector(`[data-id="${props.scrollTo.id}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [props.scrollTo])
 
   if (!props.hasFolders) {
     return (
@@ -138,6 +145,7 @@ function Grid(props: Props) {
           <li key={item.id}>
             <button
               type="button"
+              data-id={item.id}
               title={item.path}
               aria-pressed={active}
               draggable
@@ -277,6 +285,7 @@ function List(props: Props) {
           return (
             <tr
               key={item.id}
+              data-id={item.id}
               aria-selected={active}
               draggable
               onDragStart={(e) => props.onItemDragStart(item, e)}

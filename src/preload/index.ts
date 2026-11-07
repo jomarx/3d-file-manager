@@ -3,7 +3,25 @@ import { IPC, type ScanProgress, type ThreeFmApi } from '@shared/api'
 
 const api: ThreeFmApi = {
   app: {
-    info: () => ipcRenderer.invoke(IPC.appInfo)
+    info: () => ipcRenderer.invoke(IPC.appInfo),
+    showDataFolder: () => ipcRenderer.invoke(IPC.appShowDataFolder)
+  },
+  settings: {
+    get: () => ipcRenderer.invoke(IPC.settingsGet),
+    set: (patch) => ipcRenderer.invoke(IPC.settingsSet, patch)
+  },
+  launch: {
+    take: () => ipcRenderer.invoke(IPC.launchTake),
+    onRequested: (listener) => {
+      const handler = () => listener()
+      ipcRenderer.on(IPC.launchRequested, handler)
+      return () => ipcRenderer.removeListener(IPC.launchRequested, handler)
+    }
+  },
+  quick: {
+    open: (appId) => ipcRenderer.invoke(IPC.quickOpen, appId),
+    reveal: () => ipcRenderer.invoke(IPC.quickReveal),
+    addFolder: () => ipcRenderer.invoke(IPC.quickAddFolder)
   },
   library: {
     stats: () => ipcRenderer.invoke(IPC.libraryStats)

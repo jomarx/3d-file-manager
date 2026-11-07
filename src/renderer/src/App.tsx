@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react'
-import type { AppsState, Collection, FileItem, Folder, LibraryStats, ScanProgress, Tag } from '@shared/api'
+import type {
+  AppsState,
+  Collection,
+  FileItem,
+  Folder,
+  LibraryStats,
+  QuickFile,
+  ScanProgress,
+  Settings,
+  Tag,
+  Theme
+} from '@shared/api'
 import Sidebar from './components/Sidebar'
 import Toolbar from './components/Toolbar'
 import FileArea from './components/FileArea'
@@ -10,6 +21,8 @@ import AppsDialog from './components/AppsDialog'
 import LabelDialog from './components/LabelDialog'
 import ConfirmDialog from './components/ConfirmDialog'
 import OrganizeSection from './components/OrganizeSection'
+import QuickView from './components/QuickView'
+import SettingsDialog from './components/SettingsDialog'
 import { useDebounced, useFiles } from './hooks/useFiles'
 import { useFileActions } from './hooks/useFileActions'
 import { useOrganize } from './hooks/useOrganize'
@@ -20,7 +33,17 @@ import type { FileType, Selection, SortKey, ViewMode } from './types'
 
 const EMPTY_STATS: LibraryStats = { files: 0, untagged: 0, missing: 0 }
 
-export default function App() {
+const MOVE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'])
+
+// Files per row, read from the layout; 1 in the list.
+function gridColumns(): number {
+  const cells = [...document.querySelectorAll<HTMLElement>('[data-files] [data-id]')]
+  const top = cells[0]?.offsetTop
+  const n = cells.findIndex((cell) => cell.offsetTop !== top)
+  return n === -1 ? Math.max(cells.length, 1) : n
+}
+
+export default function App({ initialSettings }: { initialSettings: Settings }) {
   const [folders, setFolders] = useState<Folder[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
@@ -29,9 +52,12 @@ export default function App() {
   const [scope, setScope] = useState<Selection>({ kind: 'library', id: 'all' })
   const [query, setQuery] = useState('')
   const [types, setTypes] = useState<Set<FileType>>(new Set())
-  const [sort, setSort] = useState<SortKey>('name')
-  const [desc, setDesc] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('grid')
+  const [sort, setSort] = useState<SortKey>(initialSettings.sort)
+  const [desc, setDesc] = useState(initialSettings.desc)
+  const [viewMode, setViewMode] = useState<ViewMode>(initialSettings.viewMode)
+  const [theme, setTheme] = useState<Theme>(initialSettings.theme)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [removingFolder, setRemovingFolder] = useState<Folder | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [notice, setNotice] = useState<string | null>(null)
   const [apps, setApps] = useState<AppsState>(EMPTY_APPS)
@@ -39,8 +65,15 @@ export default function App() {
   const [menu, setMenu] = useState<MenuAt | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [removingMissing, setRemovingMissing] = useState(false)
+  const [quick, setQuick] = useState<QuickFile | null>(null)
+  const [revealing, setRevealing] = useState<number | null>(null)
+  const [scrollTo, setScrollTo] = useState<{ id: number } | null>(null)
+  // A shift range runs from the anchor to the lead, which arrow keys move.
   const anchor = useRef<number | null>(null)
+  const lead = useRef<number | null>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
+  const closeQuick = useCallback(() => setQuick(null), [])
 
   const search = useDebounced(query, 150)
   const typeList = useMemo(() => [...types].sort(), [types])
@@ -95,7 +128,41 @@ export default function App() {
   useEffect(() => {
     setSelected(new Set())
     anchor.current = null
+    lead.current = null
   }, [scope, search, typeList])
+
+  // A cataloged file opened from Explorer: show its folder unfiltered, page
+  // through until it is loaded, then select it.
+  useEffect(() => {
+    if (revealing === null || !files.settled || search !== query) return
+    if (files.items.some((f) => f.id === revealing)) {
+      anchor.current = revealing
+      lead.current = revealing
+      setSelected(new Set([revealing]))
+      setScrollTo({ id: revealing })
+      setRevealing(null)
+    } else if (files.items.length < files.total) {
+      files.loadMore()
+    } else {
+      setRevealing(null)
+    }
+  }, [revealing, files, search, query])
+
+  // Files opened from Explorer, at startup and while 3FM runs.
+  useEffect(() => {
+    const take = async () => {
+      const target = await window.api.launch.take()
+      if (!target) return
+      if (target.kind === 'quick') return setQuick(target.file)
+      setQuick(null)
+      setScope({ kind: 'folder', id: target.file.folderId })
+      setQuery('')
+      setTypes((prev) => (prev.size > 0 ? new Set() : prev))
+      setRevealing(target.file.id)
+    }
+    void take()
+    return window.api.launch.onRequested(() => void take())
+  }, [])
 
   // Files that leave the view (untagged, removed from the open collection…) leave the selection too.
   useEffect(() => {
@@ -155,7 +222,7 @@ export default function App() {
     e.preventDefault()
     let targets = selectedItems
     if (!selected.has(item.id)) {
-      anchor.current = item.id
+      anchor.current = lead.current = item.id
       setSelected(new Set([item.id]))
       targets = [item]
     }
@@ -167,7 +234,7 @@ export default function App() {
   const onItemDragStart = (item: FileItem, e: DragEvent) => {
     const dragged = selected.has(item.id) ? selectedItems : [item]
     if (!selected.has(item.id)) {
-      anchor.current = item.id
+      anchor.current = lead.current = item.id
       setSelected(new Set([item.id]))
     }
     startFileDrag(e, dragged.map((f) => f.id), dragged.length === 1 ? item.name : `${dragged.length} files`)
@@ -175,19 +242,23 @@ export default function App() {
 
   const onItemOpen = (item: FileItem) => void actions.open(selected.has(item.id) ? selectedItems : [item])
 
+  // Selects from the anchor to id; false when the anchor is not in view.
+  const selectRange = (id: number, additive: boolean): boolean => {
+    if (anchor.current === null) return false
+    const ids = files.items.map((f) => f.id)
+    const a = ids.indexOf(anchor.current)
+    const b = ids.indexOf(id)
+    if (a === -1 || b === -1) return false
+    const range = ids.slice(Math.min(a, b), Math.max(a, b) + 1)
+    setSelected((prev) => new Set(additive ? [...prev, ...range] : range))
+    lead.current = id
+    return true
+  }
+
   const onItemClick = (item: FileItem, e: MouseEvent) => {
     const additive = e.ctrlKey || e.metaKey
-    if (e.shiftKey && anchor.current !== null) {
-      const ids = files.items.map((f) => f.id)
-      const a = ids.indexOf(anchor.current)
-      const b = ids.indexOf(item.id)
-      if (a !== -1 && b !== -1) {
-        const range = ids.slice(Math.min(a, b), Math.max(a, b) + 1)
-        setSelected((prev) => new Set(additive ? [...prev, ...range] : range))
-        return
-      }
-    }
-    anchor.current = item.id
+    if (e.shiftKey && selectRange(item.id, additive)) return
+    anchor.current = lead.current = item.id
     if (additive) {
       setSelected((prev) => {
         const next = new Set(prev)
@@ -200,18 +271,70 @@ export default function App() {
     }
   }
 
+  // Arrow keys, Home and End move through the files like Explorer; Shift extends
+  // the selection from the anchor. False when the key does nothing here.
+  const moveSelection = (key: string, extend: boolean): boolean => {
+    const ids = files.items.map((f) => f.id)
+    if (ids.length === 0) return false
+    const columns = gridColumns()
+    const from = lead.current === null ? -1 : ids.indexOf(lead.current)
+    let to: number
+    if (key === 'Home') to = 0
+    else if (key === 'End') to = ids.length - 1
+    else if (from === -1) to = 0
+    else if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      if (columns === 1) return false
+      to = from + (key === 'ArrowLeft' ? -1 : 1)
+    } else {
+      to = from + (key === 'ArrowUp' ? -columns : columns)
+    }
+    // Up from the first row stays put; down from the last row goes to the end.
+    if (to < 0) to = from
+    to = Math.min(to, ids.length - 1)
+    const id = ids[to]
+    if (!extend || !selectRange(id, false)) {
+      anchor.current = lead.current = id
+      setSelected(new Set([id]))
+    }
+    setScrollTo({ id })
+    return true
+  }
+
   // Reassigned every render so the listener below always sees current state.
   const onKey = useRef<(e: KeyboardEvent) => void>(() => undefined)
   onKey.current = (e) => {
     const target = e.target as HTMLElement
     const typing =
       target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
-    const modal = appsOpen || actions.pendingTrash || organize.dialogOpen || removingMissing
+    const modal =
+      appsOpen ||
+      actions.pendingTrash ||
+      organize.dialogOpen ||
+      removingMissing ||
+      removingFolder ||
+      settingsOpen ||
+      quick
     if (modal) return
+    const ctrl = e.ctrlKey || e.metaKey
+    if (ctrl && e.key === 'f') {
+      e.preventDefault()
+      searchRef.current?.focus()
+      searchRef.current?.select()
+      return
+    }
+    if (ctrl && e.key === ',') {
+      e.preventDefault()
+      setSettingsOpen(true)
+      return
+    }
     if (e.key === 'Escape') setSelected(new Set())
-    if (e.key === 'a' && (e.ctrlKey || e.metaKey) && !typing) {
+    if (e.key === 'a' && ctrl && !typing) {
       e.preventDefault()
       setSelected(new Set(files.items.map((f) => f.id)))
+    }
+    if (!typing && !ctrl && !e.altKey && MOVE_KEYS.has(e.key) && moveSelection(e.key, e.shiftKey)) {
+      e.preventDefault()
+      return
     }
     if (typing || selectedItems.length === 0) return
     const single = selectedItems.length === 1 && !selectedItems[0].missing
@@ -244,11 +367,7 @@ export default function App() {
   }
 
   const removeFolder = async (folder: Folder) => {
-    const confirmed = window.confirm(
-      `Remove ${folder.path} from the catalog?\n\n` +
-        'Files on disk are not touched, but tags and collection entries for files in this folder will be removed.'
-    )
-    if (!confirmed) return
+    setRemovingFolder(null)
     await window.api.folders.remove(folder.id)
     if (scope.kind === 'folder' && scope.id === folder.id) {
       setScope({ kind: 'library', id: 'all' })
@@ -268,6 +387,17 @@ export default function App() {
   const onSortChange = (nextSort: SortKey, nextDesc: boolean) => {
     setSort(nextSort)
     setDesc(nextDesc)
+    void window.api.settings.set({ sort: nextSort, desc: nextDesc })
+  }
+
+  const onViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode)
+    void window.api.settings.set({ viewMode: mode })
+  }
+
+  const onThemeChange = (next: Theme) => {
+    setTheme(next)
+    void window.api.settings.set({ theme: next })
   }
 
   const scanning = scans.size > 0
@@ -276,6 +406,7 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <Toolbar
+        searchRef={searchRef}
         query={query}
         onQueryChange={setQuery}
         types={types}
@@ -284,8 +415,9 @@ export default function App() {
         desc={desc}
         onSortChange={onSortChange}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={onViewModeChange}
         onManageApps={() => setAppsOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <div className="flex min-h-0 flex-1">
         <Sidebar
@@ -297,7 +429,7 @@ export default function App() {
           selection={scope}
           onSelect={setScope}
           onAddFolder={addFolder}
-          onRemoveFolder={removeFolder}
+          onRemoveFolder={setRemovingFolder}
           onRevealFolder={(f) => void window.api.folders.reveal(f.id)}
           onRescanFolder={(f) => void window.api.folders.rescan(f.id)}
           onNewCollection={() => organize.startCreate('collection')}
@@ -321,6 +453,7 @@ export default function App() {
           desc={desc}
           onSort={onSortChange}
           selected={selected}
+          scrollTo={scrollTo}
           onItemClick={onItemClick}
           onItemOpen={onItemOpen}
           onItemContextMenu={onItemContextMenu}
@@ -365,6 +498,22 @@ export default function App() {
           </span>
         )}
       </footer>
+      {quick && (
+        <QuickView
+          file={quick}
+          apps={apps}
+          covered={menu !== null || appsOpen}
+          onClose={closeQuick}
+          notify={setNotice}
+          openMenu={setMenu}
+          onManageApps={() => setAppsOpen(true)}
+          onFolderAdded={(folder) => {
+            setQuick(null)
+            setScope({ kind: 'folder', id: folder.id })
+            void refreshSidebar()
+          }}
+        />
+      )}
       {menu && <Menu at={menu} onClose={closeMenu} />}
       {actions.pendingTrash && (
         <TrashDialog
@@ -419,11 +568,27 @@ export default function App() {
           </p>
         </ConfirmDialog>
       )}
+      {removingFolder && (
+        <ConfirmDialog
+          title="Remove folder"
+          confirmLabel="Remove"
+          onConfirm={() => void removeFolder(removingFolder)}
+          onCancel={() => setRemovingFolder(null)}
+        >
+          <p className="break-words">Remove {removingFolder.path} from the catalog?</p>
+          <p className="mt-2 text-zinc-500">
+            Files on disk are not touched, but tags and collection entries for files in this folder are removed.
+          </p>
+        </ConfirmDialog>
+      )}
       {appsOpen && <AppsDialog state={apps} onChange={setApps} onClose={() => setAppsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsDialog theme={theme} onThemeChange={onThemeChange} onClose={() => setSettingsOpen(false)} />
+      )}
       {notice && (
         <div
           role="status"
-          className="fixed bottom-10 left-1/2 -translate-x-1/2 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900"
+          className="fixed bottom-10 left-1/2 z-[60] -translate-x-1/2 rounded-md bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900"
         >
           {notice}
         </div>

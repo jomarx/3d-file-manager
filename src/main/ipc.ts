@@ -1,3 +1,4 @@
+import { dirname } from 'node:path'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import {
   IPC,
@@ -5,7 +6,9 @@ import {
   type AddFolderResult,
   type AppInfo,
   type FileQuery,
-  type LocateResult
+  type LocateResult,
+  type OpResult,
+  type Settings
 } from '@shared/api'
 import { detectApps } from './apps/detect'
 import { addApp, appsState, removeApp, setDefaultApp, syncDetectedApps } from './db/apps'
@@ -16,10 +19,12 @@ import {
   nearestDir,
   openFiles,
   openFilesWithSystem,
+  openInApp,
   renameFile,
   trashFiles,
   trashWarnings
 } from './fileops'
+import { quickPath, takeLaunch } from './launch'
 import { addFolder, getFolder, libraryStats, listFolders, removeFolder } from './db/repo'
 import { assignTag, createTag, deleteTag, listTags, updateTag } from './db/tags'
 import {
@@ -29,6 +34,7 @@ import {
   listCollections,
   updateCollection
 } from './db/collections'
+import { getSettings, updateSettings } from './settings'
 import type { Scanner } from './scan/scanner'
 import type { FolderWatcher } from './scan/watcher'
 import { saveThumb } from './thumbs'
@@ -41,6 +47,31 @@ export function registerIpc(dbPath: string, scanner: Scanner, watcher: FolderWat
     dbPath,
     schemaVersion: SCHEMA_VERSION
   }))
+
+  ipcMain.handle(IPC.appShowDataFolder, () => shell.openPath(app.getPath('userData')).then(() => undefined))
+
+  ipcMain.handle(IPC.settingsGet, () => getSettings())
+  ipcMain.handle(IPC.settingsSet, (_e, patch: Partial<Settings>) => updateSettings(patch))
+
+  ipcMain.handle(IPC.launchTake, () => takeLaunch())
+
+  ipcMain.handle(IPC.quickOpen, (_e, appId: number): Promise<OpResult> => {
+    const path = quickPath()
+    return path ? openInApp([path], appId) : Promise.resolve({ ok: false, message: 'No file is open in the quick view.' })
+  })
+
+  ipcMain.handle(IPC.quickReveal, () => {
+    const path = quickPath()
+    if (path) shell.showItemInFolder(path)
+  })
+
+  ipcMain.handle(IPC.quickAddFolder, (): AddFolderResult => {
+    const path = quickPath()
+    if (!path) return { ok: false, reason: 'not-found', message: 'No file is open in the quick view.' }
+    const result = addFolder(dirname(path))
+    if (result.ok) scanner.enqueue(result.folder.id)
+    return result
+  })
 
   ipcMain.handle(IPC.libraryStats, () => libraryStats())
 

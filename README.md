@@ -20,6 +20,11 @@ npm run dist     # Windows installer in dist/
 
 App data (database, thumbnail cache, settings) lives in `%APPDATA%\3FM`.
 
+The installer adds 3FM to Explorer's **Open with** for `.stl`, `.3mf` and `.gcode` files without
+changing their default program. A file opened that way is selected in the catalog if it is in
+one of your folders; any other file opens in a quick view, read-only and without being cataloged.
+After editing `build/icon.svg`, regenerate the icon with `npx electron scripts/make-icon.cjs`.
+
 ## Layout
 
 ```
@@ -37,4 +42,4 @@ src/renderer/    React UI
 4. File operations and slicers — rename, delete to Recycle Bin, Open with ✅
 5. Tags and collections — create, edit, assign from the panel, menus or drag and drop ✅
 6. Folder watcher, move detection, Missing view, thumbnails ✅
-7. Polish and packaging
+7. Polish and packaging — installer, open STL/3MF/G-code from Explorer into a quick view, settings, theme, shortcuts ✅

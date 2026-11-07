@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fileUrl, type FileItem } from '@shared/api'
+import { fileUrl, quickUrl, type FileItem, type QuickFile } from '@shared/api'
 import type { ParsedModel } from '@shared/model'
 import type { ParseMessage, ParseRequest } from '../viewer/messages'
 import ParseWorker from '../viewer/parse.worker?worker&inline'
@@ -16,18 +16,39 @@ export type ModelState =
   | { status: 'ready'; model: ParsedModel }
   | { status: 'error'; message: string }
 
-export function useModel(file: FileItem | null): { state: ModelState; loadLarge(): void } {
+// A file to preview: where to fetch it and what it is. A new key starts a new load.
+export interface ModelSource {
+  key: string
+  url: string
+  ext: string
+  size: number
+}
+
+export const catalogSource = (file: FileItem): ModelSource => ({
+  key: `file:${file.id}:${file.mtime}:${file.size}`,
+  url: fileUrl(file.id),
+  ext: file.ext,
+  size: file.size
+})
+
+export const quickSource = (file: QuickFile): ModelSource => ({
+  key: `quick:${file.token}`,
+  url: quickUrl(file.token),
+  ext: file.ext,
+  size: file.size
+})
+
+export function useModel(source: ModelSource | null): { state: ModelState; loadLarge(): void } {
   const [state, setState] = useState<ModelState>({ status: 'idle' })
-  const [forced, setForced] = useState<number | null>(null)
-  const id = file?.id ?? null
-  const key = file ? `${file.id}:${file.mtime}:${file.size}` : null
-  const large = !!file && file.size > AUTO_PREVIEW_BYTES && forced !== id
+  const [forced, setForced] = useState<string | null>(null)
+  const key = source?.key ?? null
+  const large = !!source && source.size > AUTO_PREVIEW_BYTES && forced !== key
 
   useEffect(() => {
-    if (!file) return setState({ status: 'idle' })
+    if (!source) return setState({ status: 'idle' })
     if (large) return setState({ status: 'large' })
 
-    setState({ status: 'loading', loaded: 0, total: file.size, parsing: false })
+    setState({ status: 'loading', loaded: 0, total: source.size, parsing: false })
     let worker: Worker | null = null
     const timer = setTimeout(() => {
       worker = new ParseWorker()
@@ -46,7 +67,7 @@ export function useModel(file: FileItem | null): { state: ModelState; loadLarge(
         }
       }
       worker.onerror = (e) => setState({ status: 'error', message: `The previewer crashed: ${e.message}` })
-      const request: ParseRequest = { url: fileUrl(file.id), ext: file.ext, size: file.size }
+      const request: ParseRequest = { url: source.url, ext: source.ext, size: source.size }
       worker.postMessage(request)
     }, START_DELAY_MS)
 
@@ -54,8 +75,8 @@ export function useModel(file: FileItem | null): { state: ModelState; loadLarge(
       clearTimeout(timer)
       worker?.terminate()
     }
-    // `key` covers the fields of `file` that matter.
+    // `key` covers the fields of `source` that matter.
   }, [key, large])
 
-  return { state, loadLarge: () => setForced(id) }
+  return { state, loadLarge: () => setForced(key) }
 }

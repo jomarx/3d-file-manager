@@ -101,6 +101,21 @@ export interface FileItem {
   collectionIds: number[]
 }
 
+// A file opened from Explorer that isn't in the catalog. The quick view may read
+// this one file through quickUrl(token) and nothing else.
+export interface QuickFile {
+  token: string
+  path: string
+  name: string
+  ext: string
+  type: FileType
+  size: number
+  mtime: number
+}
+
+// What a file opened from Explorer turned out to be.
+export type LaunchTarget = { kind: 'catalog'; file: FileItem } | { kind: 'quick'; file: QuickFile }
+
 // 'ready': a thumbnail is cached; 'none': one couldn't be made from this
 // version of the file; null: not tried yet.
 export type ThumbState = 'ready' | 'none' | null
@@ -114,6 +129,20 @@ export type Scope =
   | { kind: 'folder'; id: number }
 
 export type SortKey = 'name' | 'mtime' | 'size' | 'type'
+
+export type ViewMode = 'grid' | 'list'
+
+export type Theme = 'system' | 'light' | 'dark'
+
+// Preferences kept between runs.
+export interface Settings {
+  theme: Theme
+  viewMode: ViewMode
+  sort: SortKey
+  desc: boolean
+}
+
+export const DEFAULT_SETTINGS: Settings = { theme: 'system', viewMode: 'grid', sort: 'name', desc: false }
 
 export interface FileQuery {
   scope: Scope
@@ -185,6 +214,25 @@ export type AddAppResult =
 export interface ThreeFmApi {
   app: {
     info(): Promise<AppInfo>
+    showDataFolder(): Promise<void>
+  }
+  settings: {
+    get(): Promise<Settings>
+    // Saves the given keys and returns the full settings.
+    set(patch: Partial<Settings>): Promise<Settings>
+  }
+  launch: {
+    // The file most recently opened from Explorer, once; null when there is none.
+    take(): Promise<LaunchTarget | null>
+    // Called when a file is opened from Explorer while 3FM runs; take() fetches it.
+    onRequested(listener: () => void): () => void
+  }
+  // Actions on the file in the quick view. Main knows which file that is.
+  quick: {
+    open(appId: number): Promise<OpResult>
+    reveal(): Promise<void>
+    // Adds the folder holding the file to the catalog.
+    addFolder(): Promise<AddFolderResult>
   }
   library: {
     stats(): Promise<LibraryStats>
@@ -244,12 +292,22 @@ export interface ThreeFmApi {
 
 // Custom scheme the renderer fetches cataloged files through: threefm://file/<id>,
 // and their cached thumbnails: threefm://thumb/<id>. The version busts the cache.
+// threefm://quick/<token> is the file in the quick view.
 export const FILE_PROTOCOL = 'threefm'
 export const fileUrl = (id: number): string => `${FILE_PROTOCOL}://file/${id}`
 export const thumbUrl = (id: number, version: number): string => `${FILE_PROTOCOL}://thumb/${id}?v=${version}`
+export const quickUrl = (token: string): string => `${FILE_PROTOCOL}://quick/${token}`
 
 export const IPC = {
   appInfo: 'app:info',
+  appShowDataFolder: 'app:show-data-folder',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+  launchTake: 'launch:take',
+  launchRequested: 'launch:requested',
+  quickOpen: 'quick:open',
+  quickReveal: 'quick:reveal',
+  quickAddFolder: 'quick:add-folder',
   libraryStats: 'library:stats',
   foldersList: 'folders:list',
   foldersPickAndAdd: 'folders:pick-and-add',

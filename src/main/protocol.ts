@@ -4,11 +4,13 @@ import { Readable } from 'node:stream'
 import { protocol } from 'electron'
 import { FILE_PROTOCOL } from '@shared/api'
 import { filePath, thumbName } from './db/files'
+import { quickPath } from './launch'
 import { thumbFile } from './thumbs'
 
 // threefm://file/<id> streams a cataloged file to the renderer and
 // threefm://thumb/<id> its cached thumbnail. Only ids in the catalog resolve,
-// so the page can never read arbitrary paths.
+// so the page can never read arbitrary paths. threefm://quick/<token> streams
+// the one file opened from Explorer into the quick view.
 
 export function registerFileScheme(): void {
   protocol.registerSchemesAsPrivileged([
@@ -28,9 +30,15 @@ const headers = (extra: Record<string, string> = {}) => ({
 export function handleFileProtocol(): void {
   protocol.handle(FILE_PROTOCOL, async (request) => {
     const url = new URL(request.url)
-    const id = Number(url.pathname.replace(/^\//, ''))
+    const key = url.pathname.replace(/^\//, '')
+    const id = Number(key)
     if (url.hostname === 'thumb') return thumbResponse(id)
-    const path = url.hostname === 'file' && Number.isInteger(id) ? filePath(id) : null
+    const path =
+      url.hostname === 'file' && Number.isInteger(id)
+        ? filePath(id)
+        : url.hostname === 'quick' && key !== ''
+          ? quickPath(key)
+          : null
     if (!path) return new Response('Not found', { status: 404, headers: headers() })
     try {
       const info = await stat(path)

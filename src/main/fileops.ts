@@ -180,13 +180,10 @@ function launch(app: LaunchApp, files: string[]): Promise<void> {
   })
 }
 
-async function launchOrFail(app: LaunchApp, files: FileItem[]): Promise<OpResult> {
-  if (files.length > MAX_OPEN_IN_APP) return fail(`Select at most ${MAX_OPEN_IN_APP} files to open at once.`)
+async function launchOrFail(app: LaunchApp, paths: string[]): Promise<OpResult> {
+  if (paths.length > MAX_OPEN_IN_APP) return fail(`Select at most ${MAX_OPEN_IN_APP} files to open at once.`)
   try {
-    await launch(
-      app,
-      files.map((f) => f.path)
-    )
+    await launch(app, paths)
     return { ok: true }
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
@@ -224,8 +221,10 @@ export async function openFiles(ids: number[], appId: number | null, openPath: O
   const files = present(ids)
   if (!Array.isArray(files)) return files
   if (appId !== null) {
-    const app = getApp(appId)
-    return app ? launchOrFail(app, files) : fail('That app is no longer in the list.')
+    return openInApp(
+      files.map((f) => f.path),
+      appId
+    )
   }
   const groups = new Map<number, { app: LaunchApp; files: FileItem[] }>()
   const system: FileItem[] = []
@@ -236,10 +235,19 @@ export async function openFiles(ids: number[], appId: number | null, openPath: O
     else groups.set(app.id, { app, files: [file] })
   }
   for (const group of groups.values()) {
-    const result = await launchOrFail(group.app, group.files)
+    const result = await launchOrFail(
+      group.app,
+      group.files.map((f) => f.path)
+    )
     if (!result.ok) return result
   }
   return system.length > 0 ? openWithSystem(system, openPath) : { ok: true }
+}
+
+// Opens paths, cataloged or not, in one of the listed apps.
+export function openInApp(paths: string[], appId: number): Promise<OpResult> {
+  const app = getApp(appId)
+  return app ? launchOrFail(app, paths) : Promise.resolve(fail('That app is no longer in the list.'))
 }
 
 export async function openFilesWithSystem(ids: number[], openPath: OpenPath): Promise<OpResult> {

@@ -1,6 +1,8 @@
+import type { RefObject } from 'react'
 import type { FileType, SortKey, ViewMode } from '../types'
 
 interface Props {
+  searchRef: RefObject<HTMLInputElement | null>
   query: string
   onQueryChange(query: string): void
   types: Set<FileType>
@@ -11,6 +13,7 @@ interface Props {
   viewMode: ViewMode
   onViewModeChange(mode: ViewMode): void
   onManageApps(): void
+  onOpenSettings(): void
 }
 
 const SORTS: { id: SortKey; label: string }[] = [
@@ -44,6 +47,7 @@ export default function Toolbar(props: Props) {
       </div>
 
       <input
+        ref={props.searchRef}
         type="search"
         value={props.query}
         onChange={(e) => props.onQueryChange(e.target.value)}
@@ -130,6 +134,19 @@ export default function Toolbar(props: Props) {
         className="h-8 rounded-md border border-zinc-300 px-3 text-xs text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
       >
         Apps
+      </button>
+
+      <button
+        type="button"
+        title="Settings (Ctrl+,)"
+        aria-label="Settings"
+        onClick={props.onOpenSettings}
+        className="-ml-2 grid size-8 place-items-center rounded-md border border-zinc-300 text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
+      >
+        <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+        </svg>
       </button>
     </header>
   )
